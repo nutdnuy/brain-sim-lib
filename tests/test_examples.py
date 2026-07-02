@@ -19,6 +19,14 @@ def _load_notebook() -> dict:
     return json.loads(NOTEBOOK.read_text(encoding="utf-8"))
 
 
+def _code_cell_source(notebook: dict) -> str:
+    return "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook["cells"]
+        if cell.get("cell_type") == "code"
+    )
+
+
 def test_examples_index_links_tutorial_and_sample_assets() -> None:
     text = EXAMPLES_README.read_text(encoding="utf-8")
 
@@ -34,6 +42,7 @@ def test_tutorial_notebook_has_required_sections_and_dry_run_flag() -> None:
         "".join(cell.get("source", []))
         for cell in notebook["cells"]
     )
+    code_source = _code_cell_source(notebook)
 
     required_sections = [
         "# Tutorial 1 - Excel Batch Alpha Simulation",
@@ -48,24 +57,29 @@ def test_tutorial_notebook_has_required_sections_and_dry_run_flag() -> None:
     for heading in required_sections:
         assert heading in source
 
-    assert "DRY_RUN = True" in source
-    assert "BatchRunner" in source
-    assert "FakeTutorialBrainClient" in source
+    assert "DRY_RUN = True" in code_source
+    assert "BatchRunner" in code_source
+    assert "FakeTutorialBrainClient" in code_source
 
 
 def test_tutorial_code_cells_do_not_run_live_brain_commands() -> None:
     notebook = _load_notebook()
-    code_source = "\n".join(
-        "".join(cell.get("source", []))
-        for cell in notebook["cells"]
-        if cell.get("cell_type") == "code"
-    )
+    code_source = _code_cell_source(notebook)
 
     blocked_fragments = [
         "brain-sim login",
         "brain-sim simulate-excel",
         "BrainAuth(",
+        "BrainClient(",
+        "brain_sim.auth",
+        "brain_sim.client",
+        "subprocess",
+        "os.system",
         "requests.Session()",
+        "requests.",
+        "simulate-excel",
+        "login --print-link",
+        "login --notify-email",
         "api.worldquantbrain.com",
         ".brain_credentials",
     ]
