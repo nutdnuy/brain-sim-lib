@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+from urllib.parse import unquote
 
 from openpyxl import load_workbook
 
@@ -38,9 +39,12 @@ def test_examples_index_links_tutorial_and_sample_assets() -> None:
 
 def test_root_readme_points_to_examples() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
+    encoded_target = "examples/Tutorial%201%20-%20Excel%20Batch%20Alpha%20Simulation.ipynb"
 
     assert "## Examples" in text
     assert "examples/Tutorial 1 - Excel Batch Alpha Simulation.ipynb" in text
+    assert f"]({encoded_target})" in text
+    assert (ROOT / unquote(encoded_target)).exists()
     assert "offline tutorial" in text.lower()
 
 

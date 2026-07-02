@@ -128,7 +128,7 @@ Start with the offline tutorial:
 
 Notebook path: `examples/Tutorial 1 - Excel Batch Alpha Simulation.ipynb`
 
-The notebook builds a sample Excel alpha queue, runs an offline tutorial simulation with a fake BRAIN client, and explains the live commands to use after `brain-sim login`.
+The notebook builds a sample Excel alpha queue, runs an offline tutorial simulation with a fake BRAIN client, and explains that live BRAIN runs consume simulation quota and should be run only after `brain-sim login`.
 
 ## Batch Policy
 
