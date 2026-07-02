@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
+from http.cookiejar import Cookie
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -17,6 +19,36 @@ API_BASE = "https://api.worldquantbrain.com"
 
 class BrainAuthError(RuntimeError):
     pass
+
+
+def _is_persona_challenge(value: str | None) -> bool:
+    if not value:
+        return False
+    for challenge in value.split(","):
+        scheme = challenge.strip().split(None, 1)[0].split(";", 1)[0]
+        if scheme.lower() == "persona":
+            return True
+    return False
+
+
+def _cookie_to_dict(cookie: Cookie, default_domain: str = "api.worldquantbrain.com") -> dict[str, Any]:
+    return {
+        "name": cookie.name,
+        "value": cookie.value,
+        "domain": cookie.domain or default_domain,
+        "path": cookie.path or "/",
+        "secure": cookie.secure,
+        "expires": cookie.expires,
+    }
+
+
+def _parse_cookie_expires(value: str) -> int | None:
+    if not value:
+        return None
+    try:
+        return int(parsedate_to_datetime(value).timestamp())
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def load_credentials(path: str | Path) -> tuple[str, str]:
@@ -41,6 +73,7 @@ class BrainAuth:
         self.api_base = api_base.rstrip("/")
         self.cookie_path = Path(cookie_path)
         self.notifier = notifier
+        self.cookie_domain = urlparse(self.api_base).hostname or "api.worldquantbrain.com"
 
     def login(self, email: str, password: str, *, notify_email: str | None = None) -> AuthChallenge | None:
         response = self.session.post(
@@ -52,17 +85,16 @@ class BrainAuth:
             self._save_cookies(response)
             return None
 
-        if response.status_code == 401 and response.headers.get("WWW-Authenticate") == "persona":
+        if response.status_code == 401 and _is_persona_challenge(response.headers.get("WWW-Authenticate")):
             location = response.headers.get("Location", "")
             url = urljoin(response.url, location)
-            challenge = AuthChallenge(
-                url=url,
-                www_authenticate="persona",
-                message="WorldQuant BRAIN requires Persona verification.",
-            )
+            message = "WorldQuant BRAIN requires Persona verification."
             if notify_email and self.notifier:
-                self.notifier.send_login_link(notify_email, url)
-            return challenge
+                try:
+                    self.notifier.send_login_link(notify_email, url)
+                except Exception as exc:
+                    message = f"{message} Notification failed: {exc}"
+            return AuthChallenge(url=url, www_authenticate="persona", message=message)
 
         detail: Any
         try:
@@ -75,8 +107,17 @@ class BrainAuth:
         if not self.cookie_path.exists():
             return False
         payload = json.loads(self.cookie_path.read_text(encoding="utf-8"))
-        for name, value in payload.get("cookies", {}).items():
-            self.session.cookies.set(name, value)
+        for cookie in payload.get("cookies", []):
+            if cookie.get("domain") != self.cookie_domain:
+                continue
+            self.session.cookies.set(
+                cookie["name"],
+                cookie["value"],
+                domain=cookie["domain"],
+                path=cookie.get("path") or "/",
+                secure=bool(cookie.get("secure")),
+                expires=cookie.get("expires"),
+            )
         return True
 
     def _save_cookies(self, response: requests.Response | None = None) -> None:
@@ -85,6 +126,19 @@ class BrainAuth:
             cookie = SimpleCookie()
             cookie.load(response.headers["Set-Cookie"])
             for name, morsel in cookie.items():
-                self.session.cookies.set(name, morsel.value)
-        payload = {"cookies": requests.utils.dict_from_cookiejar(self.session.cookies)}
+                self.session.cookies.set(
+                    name,
+                    morsel.value,
+                    domain=morsel["domain"] or self.cookie_domain,
+                    path=morsel["path"] or "/",
+                    secure=bool(morsel["secure"]),
+                    expires=_parse_cookie_expires(morsel["expires"]),
+                )
+        cookies = [
+            _cookie_to_dict(cookie, self.cookie_domain)
+            for cookie in self.session.cookies
+            if (cookie.domain or self.cookie_domain) == self.cookie_domain
+        ]
+        payload = {"cookies": cookies}
         self.cookie_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        self.cookie_path.chmod(0o600)
