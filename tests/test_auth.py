@@ -39,6 +39,7 @@ def test_login_returns_persona_challenge_and_notifies(requests_mock) -> None:
     challenge = auth.login("u@example.com", "secret", notify_email="me@example.com")
 
     assert challenge.url == "https://api.worldquantbrain.com/authentication/persona?inquiry=inq_123"
+    assert challenge.payload["persona_inquiry_id"] == "inq_123"
     assert notifier.sent_messages == [
         {
             "to_email": "me@example.com",
@@ -101,6 +102,62 @@ def test_notifier_failure_still_returns_challenge(requests_mock) -> None:
 
     assert challenge.url == "https://api.worldquantbrain.com/authentication/persona?inquiry=inq_123"
     assert "Notification failed: smtp unavailable" in challenge.message
+
+
+def test_authenticate_persona_success_saves_cookie(requests_mock, tmp_path) -> None:
+    session = requests.Session()
+    requests_mock.post(
+        "https://api.worldquantbrain.com/authentication/persona",
+        status_code=200,
+        headers={"Set-Cookie": "t=persona-jwt; Path=/; secure"},
+        json={"user": {"id": "NW123"}},
+    )
+    auth = BrainAuth(session=session, cookie_path=tmp_path / "cookies.json")
+
+    result = auth.authenticate_persona({"inquiry": "inq_123"})
+
+    assert result is None
+    saved = json.loads((tmp_path / "cookies.json").read_text(encoding="utf-8"))
+    assert saved["cookies"][0]["name"] == "t"
+    assert saved["cookies"][0]["value"] == "persona-jwt"
+    assert requests_mock.last_request.json() == {"inquiry": "inq_123"}
+
+
+def test_authenticate_persona_strips_url_from_saved_cli_payload(requests_mock, tmp_path) -> None:
+    session = requests.Session()
+    requests_mock.post(
+        "https://api.worldquantbrain.com/authentication/persona",
+        status_code=200,
+        headers={"Set-Cookie": "t=persona-jwt; Path=/; secure"},
+        json={"user": {"id": "NW123"}},
+    )
+    auth = BrainAuth(session=session, cookie_path=tmp_path / "cookies.json")
+
+    auth.authenticate_persona(
+        {
+            "inquiry": "inq_123",
+            "url": "https://api.worldquantbrain.com/authentication/persona?inquiry=inq_123",
+        }
+    )
+
+    assert requests_mock.last_request.json() == {"inquiry": "inq_123"}
+
+
+def test_authenticate_persona_pending_returns_challenge(requests_mock) -> None:
+    session = requests.Session()
+    requests_mock.post(
+        "https://api.worldquantbrain.com/authentication/persona",
+        status_code=401,
+        json={"detail": "INQUIRY_INCOMPLETE"},
+    )
+    auth = BrainAuth(session=session)
+
+    challenge = auth.authenticate_persona(
+        {"inquiry": "inq_123", "verification_url": "https://verify.example/?inquiry=inq_123"}
+    )
+
+    assert challenge.message == "WorldQuant BRAIN Persona verification is still pending."
+    assert challenge.payload["inquiry"] == "inq_123"
 
 
 def test_login_raises_for_invalid_credentials(requests_mock) -> None:

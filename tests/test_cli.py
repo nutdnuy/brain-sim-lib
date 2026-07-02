@@ -131,6 +131,7 @@ def test_login_challenge_prints_and_stores_link(monkeypatch, tmp_path, capsys) -
     saved = json.loads((tmp_path / ".brain_sim/latest_login_link.json").read_text())
     assert saved["url"] == "https://verify.example/inquiry"
     assert saved["www_authenticate"] == "persona"
+    assert saved["payload"] == {}
 
 
 def test_login_challenge_prints_link_without_notify_email(monkeypatch, tmp_path, capsys) -> None:
@@ -153,6 +154,38 @@ def test_login_challenge_prints_link_without_notify_email(monkeypatch, tmp_path,
 
     assert result == 2
     assert "https://verify.example/no-notify" in capsys.readouterr().out
+
+
+def test_login_uses_saved_persona_challenge_before_new_auth(monkeypatch, tmp_path, capsys) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeAuth:
+        def __init__(self, *, cookie_path, notifier=None):
+            self.session = type("Session", (), {})()
+
+        def authenticate_persona(self, payload):
+            calls["persona_payload"] = payload
+            calls["session_auth"] = self.session.auth
+            return None
+
+        def login(self, email, password, *, notify_email=None):
+            raise AssertionError("login should not create a new inquiry when a saved challenge exists")
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".brain_sim").mkdir()
+    (tmp_path / ".brain_sim/latest_login_link.json").write_text(
+        json.dumps({"url": "https://api.worldquantbrain.com/authentication/persona?inquiry=inq_saved"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "BrainAuth", FakeAuth)
+    monkeypatch.setattr(cli, "load_credentials", lambda path: ("u@example.com", "secret"))
+
+    result = cli.main(["login"])
+
+    assert result == 0
+    assert calls["persona_payload"]["inquiry"] == "inq_saved"
+    assert calls["session_auth"] == ("u@example.com", "secret")
+    assert "Login succeeded" in capsys.readouterr().out
 
 
 def test_login_success_returns_zero(monkeypatch, capsys) -> None:

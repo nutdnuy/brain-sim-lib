@@ -91,3 +91,4 @@ class AuthChallenge:
     url: str
     www_authenticate: str
     message: str
+    payload: dict[str, Any] = field(default_factory=dict)

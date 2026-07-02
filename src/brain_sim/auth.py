@@ -6,7 +6,7 @@ from http.cookies import SimpleCookie
 from http.cookiejar import Cookie
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import requests
 
@@ -15,6 +15,7 @@ from .notify import Notifier
 
 
 API_BASE = "https://api.worldquantbrain.com"
+PERSONA_HOSTED_BASE_URL = "https://inquiry.withpersona.com/verify"
 
 
 class BrainAuthError(RuntimeError):
@@ -70,6 +71,70 @@ def load_credentials(path: str | Path) -> tuple[str, str]:
     raise BrainAuthError("Credential file must be a JSON list [email, password] or object with email/password.")
 
 
+def _safe_json(response: requests.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _extract_inquiry_id(url: str) -> str:
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    return (query.get("inquiry") or query.get("inquiry-id") or [""])[0]
+
+
+def _build_auth_payload(response: requests.Response) -> dict[str, Any]:
+    data = _safe_json(response)
+    payload = data.copy() if isinstance(data, dict) else {}
+    if data is not None and not isinstance(data, dict):
+        payload["data"] = data
+
+    headers = dict(response.headers)
+    payload.update(
+        {
+            "_status_code": response.status_code,
+            "_ok": response.ok,
+            "_headers": headers,
+            "_body_text": response.text,
+        }
+    )
+
+    location = headers.get("Location") or headers.get("location") or payload.get("location") or ""
+    if location:
+        verification_url = urljoin(response.url, str(location))
+        payload["location"] = location
+        payload.setdefault("verification_url", verification_url)
+
+    inquiry_id = (
+        payload.get("inquiry")
+        or payload.get("inquiry_id")
+        or payload.get("inquiryId")
+        or _extract_inquiry_id(str(payload.get("verification_url", "")))
+    )
+    if inquiry_id:
+        payload["persona_inquiry_id"] = str(inquiry_id)
+        payload.setdefault(
+            "verification_url",
+            f"{PERSONA_HOSTED_BASE_URL}?inquiry-id={quote(str(inquiry_id), safe='')}",
+        )
+    return payload
+
+
+def _persona_request_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    request_payload = {
+        key: value
+        for key, value in payload.items()
+        if not str(key).startswith("_")
+        and key not in {"persona_inquiry_id", "verification_url", "qr_code_url", "location", "url"}
+    }
+    if not any(key in request_payload for key in ("inquiry", "inquiry_id", "inquiryId")):
+        inquiry_id = payload.get("persona_inquiry_id") or _extract_inquiry_id(str(payload.get("url", "")))
+        if inquiry_id:
+            request_payload["inquiry"] = str(inquiry_id)
+    return request_payload
+
+
 class BrainAuth:
     def __init__(
         self,
@@ -96,15 +161,15 @@ class BrainAuth:
             return None
 
         if response.status_code == 401 and _is_persona_challenge(response.headers.get("WWW-Authenticate")):
-            location = response.headers.get("Location", "")
-            url = urljoin(response.url, location)
+            payload = _build_auth_payload(response)
+            url = str(payload.get("verification_url", ""))
             message = "WorldQuant BRAIN requires Persona verification."
             if notify_email and self.notifier:
                 try:
                     self.notifier.send_login_link(notify_email, url)
                 except Exception as exc:
                     message = f"{message} Notification failed: {exc}"
-            return AuthChallenge(url=url, www_authenticate="persona", message=message)
+            return AuthChallenge(url=url, www_authenticate="persona", message=message, payload=payload)
 
         detail: Any
         try:
@@ -112,6 +177,41 @@ class BrainAuth:
         except ValueError:
             detail = response.text
         raise BrainAuthError(f"Authentication failed: status={response.status_code} detail={detail}")
+
+    def authenticate_persona(self, challenge_payload: dict[str, Any]) -> AuthChallenge | None:
+        request_payload = _persona_request_payload(challenge_payload)
+        if not request_payload:
+            raise BrainAuthError("Persona challenge payload is missing an inquiry id.")
+
+        response = self.session.post(
+            f"{self.api_base}/authentication/persona",
+            json=request_payload,
+            timeout=60,
+        )
+        payload = _build_auth_payload(response)
+        if response.ok and (payload.get("user") or payload.get("_ok")):
+            self._save_cookies(response)
+            return None
+
+        detail = str(payload.get("detail", "")).upper()
+        if response.status_code in {401, 202} and (
+            detail in {"", "INQUIRY_INCOMPLETE"} or _is_persona_challenge(response.headers.get("WWW-Authenticate"))
+        ):
+            merged = dict(challenge_payload)
+            merged.update(payload)
+            url = str(merged.get("verification_url", challenge_payload.get("url", "")))
+            return AuthChallenge(
+                url=url,
+                www_authenticate="persona",
+                message="WorldQuant BRAIN Persona verification is still pending.",
+                payload=merged,
+            )
+
+        try:
+            detail_body = response.json()
+        except ValueError:
+            detail_body = response.text
+        raise BrainAuthError(f"Persona authentication failed: status={response.status_code} detail={detail_body}")
 
     def load_saved_cookies(self) -> bool:
         if not self.cookie_path.exists():

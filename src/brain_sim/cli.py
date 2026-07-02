@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -38,12 +39,30 @@ def _write_login_link(challenge: AuthChallenge) -> None:
                 "url": challenge.url,
                 "www_authenticate": challenge.www_authenticate,
                 "message": challenge.message,
+                "payload": challenge.payload,
             },
             indent=2,
             sort_keys=True,
         ),
         encoding="utf-8",
     )
+
+
+def _load_login_challenge() -> dict[str, Any] | None:
+    if not LOGIN_LINK_PATH.exists():
+        return None
+    state = json.loads(LOGIN_LINK_PATH.read_text(encoding="utf-8"))
+    payload = state.get("payload") if isinstance(state, dict) else None
+    if isinstance(payload, dict) and payload:
+        return payload
+    url = str(state.get("url", "")) if isinstance(state, dict) else ""
+    if not url:
+        return None
+    query = parse_qs(urlparse(url).query)
+    inquiry_id = (query.get("inquiry") or query.get("inquiry-id") or [""])[0]
+    if not inquiry_id:
+        return None
+    return {"inquiry": inquiry_id, "verification_url": url, "url": url}
 
 
 def _timestamp_run_dir() -> Path:
@@ -72,8 +91,14 @@ def _command_login(args: argparse.Namespace) -> int:
     notifier = SmtpNotifier() if args.notify_email else None
     cookie_path = _expanded_path(args.cookie_path)
     auth = BrainAuth(cookie_path=cookie_path, notifier=notifier)
+    if hasattr(auth, "session"):
+        auth.session.auth = (email, password)
+    saved_challenge = _load_login_challenge()
     try:
-        result = auth.login(email, password, notify_email=args.notify_email)
+        if saved_challenge and hasattr(auth, "authenticate_persona"):
+            result = auth.authenticate_persona(saved_challenge)
+        else:
+            result = auth.login(email, password, notify_email=args.notify_email)
     except Exception as exc:  # noqa: BLE001 - present auth failures without a traceback.
         raise SystemExit(f"BRAIN login failed: {exc}") from exc
 
