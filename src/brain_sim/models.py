@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
@@ -50,12 +51,32 @@ class AlphaExpression:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class PayloadRecord:
     row_id: str
     alpha_hash: str
-    payload: dict[str, Any]
-    metadata: dict[str, Any] = field(default_factory=dict)
+    _payload: dict[str, Any] = field(repr=False)
+    _metadata: dict[str, Any] = field(repr=False)
+
+    def __init__(
+        self,
+        row_id: str,
+        alpha_hash: str,
+        payload: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        object.__setattr__(self, "row_id", row_id)
+        object.__setattr__(self, "alpha_hash", alpha_hash)
+        object.__setattr__(self, "_payload", deepcopy(payload))
+        object.__setattr__(self, "_metadata", deepcopy(metadata or {}))
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        return deepcopy(self._payload)
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        return deepcopy(self._metadata)
 
 
 @dataclass(frozen=True)
