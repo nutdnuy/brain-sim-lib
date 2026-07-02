@@ -164,5 +164,25 @@ def test_tutorial_code_cells_execute_offline(tmp_path, monkeypatch) -> None:
     assert summary_path.exists()
     with summary_path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
+    with EXPECTED_SUMMARY.open(newline="", encoding="utf-8") as f:
+        expected_rows = list(csv.DictReader(f))
     assert len(rows) == 4
     assert [row["status"] for row in rows] == ["complete", "complete", "complete", "complete"]
+    compared_fields = [
+        "row_id",
+        "status",
+        "alpha_id",
+        "simulation_location",
+        "sharpe",
+        "fitness",
+        "returns",
+        "turnover",
+        "drawdown",
+    ]
+    assert [
+        {field: row[field] for field in compared_fields}
+        for row in rows
+    ] == [
+        {field: row[field] for field in compared_fields}
+        for row in expected_rows
+    ]

@@ -148,7 +148,7 @@ def build_workbook() -> None:
 def build_expected_summary() -> None:
     EXPECTED_DIR.mkdir(parents=True, exist_ok=True)
     with SUMMARY_PATH.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=SUMMARY_FIELDS)
+        writer = csv.DictWriter(f, fieldnames=SUMMARY_FIELDS, lineterminator="\n")
         writer.writeheader()
         for index, (row_id, _expression) in enumerate(ALPHA_ROWS, start=1):
             writer.writerow(
