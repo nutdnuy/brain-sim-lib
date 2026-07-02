@@ -42,6 +42,16 @@ def _cookie_to_dict(cookie: Cookie, default_domain: str = "api.worldquantbrain.c
     }
 
 
+def _is_cookie_domain_for_host(domain: str | None, host: str) -> bool:
+    if not domain:
+        return True
+    normalized_domain = domain.lstrip(".").lower()
+    normalized_host = host.lower()
+    host_parts = normalized_host.split(".")
+    parent_domain = ".".join(host_parts[1:]) if len(host_parts) > 2 else normalized_host
+    return normalized_domain in {normalized_host, parent_domain}
+
+
 def _parse_cookie_expires(value: str) -> int | None:
     if not value:
         return None
@@ -119,12 +129,12 @@ class BrainAuth:
                 )
             return True
         for cookie in cookies:
-            if cookie.get("domain") != self.cookie_domain:
+            if not _is_cookie_domain_for_host(cookie.get("domain"), self.cookie_domain):
                 continue
             self.session.cookies.set(
                 cookie["name"],
                 cookie["value"],
-                domain=cookie["domain"],
+                domain=cookie.get("domain") or self.cookie_domain,
                 path=cookie.get("path") or "/",
                 secure=bool(cookie.get("secure")),
                 expires=cookie.get("expires"),
@@ -148,7 +158,7 @@ class BrainAuth:
         cookies = [
             _cookie_to_dict(cookie, self.cookie_domain)
             for cookie in self.session.cookies
-            if (cookie.domain or self.cookie_domain) == self.cookie_domain
+            if _is_cookie_domain_for_host(cookie.domain, self.cookie_domain)
         ]
         payload = {"cookies": cookies}
         self.cookie_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

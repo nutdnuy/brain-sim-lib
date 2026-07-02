@@ -146,6 +146,33 @@ def test_login_success_saves_cookie_file(requests_mock, tmp_path) -> None:
     assert stat.S_IMODE(cookie_path.stat().st_mode) == 0o600
 
 
+def test_login_saves_valid_parent_domain_cookie(requests_mock, tmp_path) -> None:
+    session = requests.Session()
+    session.cookies.set("t", "parent-domain-value", domain=".worldquantbrain.com", path="/", secure=True)
+    session.cookies.set("evil", "drop-me", domain="evil.example.com", path="/", secure=True)
+    requests_mock.post(
+        "https://api.worldquantbrain.com/authentication",
+        status_code=201,
+        json={"user": {"id": "NW123"}},
+    )
+
+    auth = BrainAuth(session=session, cookie_path=tmp_path / "cookies.json")
+    result = auth.login("u@example.com", "secret")
+
+    assert result is None
+    saved = json.loads((tmp_path / "cookies.json").read_text(encoding="utf-8"))
+    assert saved["cookies"] == [
+        {
+            "name": "t",
+            "value": "parent-domain-value",
+            "domain": ".worldquantbrain.com",
+            "path": "/",
+            "secure": True,
+            "expires": None,
+        }
+    ]
+
+
 def test_load_saved_cookies_reloads_domain_scoped_cookie(tmp_path) -> None:
     cookie_path = tmp_path / "cookies.json"
     cookie_path.write_text(
@@ -183,6 +210,47 @@ def test_load_saved_cookies_reloads_domain_scoped_cookie(tmp_path) -> None:
     assert cookies[0].name == "t"
     assert cookies[0].value == "jwt-value"
     assert cookies[0].domain == "api.worldquantbrain.com"
+    assert cookies[0].path == "/"
+    assert cookies[0].secure is True
+
+
+def test_load_saved_cookies_reloads_parent_domain_cookie(tmp_path) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    cookie_path.write_text(
+        json.dumps(
+            {
+                "cookies": [
+                    {
+                        "name": "t",
+                        "value": "parent-domain-value",
+                        "domain": ".worldquantbrain.com",
+                        "path": "/",
+                        "secure": True,
+                        "expires": None,
+                    },
+                    {
+                        "name": "evil",
+                        "value": "drop-me",
+                        "domain": "evil.example.com",
+                        "path": "/",
+                        "secure": True,
+                        "expires": None,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    session = requests.Session()
+
+    auth = BrainAuth(session=session, cookie_path=cookie_path)
+
+    assert auth.load_saved_cookies() is True
+    cookies = list(session.cookies)
+    assert len(cookies) == 1
+    assert cookies[0].name == "t"
+    assert cookies[0].value == "parent-domain-value"
+    assert cookies[0].domain == ".worldquantbrain.com"
     assert cookies[0].path == "/"
     assert cookies[0].secure is True
 
