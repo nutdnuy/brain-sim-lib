@@ -1,5 +1,0 @@
-row_id,alpha_hash,status,alpha_id,simulation_location,sharpe,fitness,returns,turnover,drawdown,margin,longCount,shortCount,failed_checks,warning_checks,pending_checks,error
-tutorial-001,tutorial-hash-1,complete,tutorial-alpha-1,/simulations/tutorial-1,1.10,0.60,0.04,0.11,0.03,,,,,,,
-tutorial-002,tutorial-hash-2,complete,tutorial-alpha-2,/simulations/tutorial-2,1.20,0.70,0.05,0.12,0.04,,,,,,,
-tutorial-003,tutorial-hash-3,complete,tutorial-alpha-3,/simulations/tutorial-3,1.30,0.80,0.06,0.13,0.05,,,,,,,
-tutorial-004,tutorial-hash-4,complete,tutorial-alpha-4,/simulations/tutorial-4,1.40,0.90,0.07,0.14,0.06,,,,,,,
