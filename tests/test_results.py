@@ -42,6 +42,45 @@ def test_append_jsonl_adds_timestamp_and_serializes_values(tmp_path) -> None:
     assert rows[1]["row_id"] == "r2"
 
 
+def test_append_jsonl_context_overrides_body_row_and_status(tmp_path) -> None:
+    store = RunStore(tmp_path / "run-1")
+
+    store.append_jsonl(
+        "submit_results.jsonl",
+        {"row_id": "body-row", "status": "COMPLETE", "tags": {"b", "a"}},
+        row_id="run-row",
+        status="poll_error",
+    )
+
+    rows = read_jsonl(tmp_path / "run-1" / "submit_results.jsonl")
+    assert rows[0]["row_id"] == "run-row"
+    assert rows[0]["status"] == "poll_error"
+    assert rows[0]["tags"] == ["a", "b"]
+
+
+def test_write_json_and_append_jsonl_reject_paths_outside_run_dir(tmp_path) -> None:
+    store = RunStore(tmp_path / "run-1")
+
+    for method_name in ("write_json", "append_jsonl"):
+        method = getattr(store, method_name)
+        try:
+            method("../escape.json", {"bad": True})
+        except ValueError as exc:
+            assert "artifact path" in str(exc)
+        else:
+            raise AssertionError(f"{method_name} accepted path traversal")
+
+
+def test_append_raw_event_sanitizes_event_name(tmp_path) -> None:
+    store = RunStore(tmp_path / "run-1")
+
+    path = store.append_raw_event("../submit/results", {"ok": True}, row_id="r1", status="complete")
+
+    assert path.parent == tmp_path / "run-1" / "raw"
+    assert path.name.endswith(".jsonl")
+    assert "/" not in path.name
+
+
 def test_write_manifest_and_summary_appends_with_stable_headers(tmp_path) -> None:
     store = RunStore(tmp_path / "run-1")
     store.write_manifest({"run_id": "run-1"})
@@ -102,13 +141,37 @@ def test_write_manifest_and_summary_appends_with_stable_headers(tmp_path) -> Non
     assert "ignored" not in rows[1]
 
 
+def test_write_summary_rejects_existing_header_mismatch(tmp_path) -> None:
+    store = RunStore(tmp_path / "run-1")
+    (tmp_path / "run-1" / "summary.csv").write_text("old,header\n1,2\n", encoding="utf-8")
+
+    try:
+        store.write_summary([{"row_id": "r1"}])
+    except ValueError as exc:
+        assert "summary.csv header" in str(exc)
+    else:
+        raise AssertionError("write_summary accepted a mismatched header")
+
+
 def test_alpha_detail_saves_under_alpha_specific_file(tmp_path) -> None:
     store = RunStore(tmp_path / "run-1")
 
     path = store.write_alpha_detail("alpha/1", {"id": "alpha/1", "is": {"sharpe": 1.2}})
 
-    assert path == tmp_path / "run-1" / "alphas" / "alpha_1.json"
+    assert path.parent == tmp_path / "run-1" / "alphas"
+    assert path.name.startswith("alpha_1-")
     assert json.loads(path.read_text(encoding="utf-8"))["id"] == "alpha/1"
+
+
+def test_safe_filenames_include_hash_to_avoid_collisions(tmp_path) -> None:
+    store = RunStore(tmp_path / "run-1")
+
+    path_a = store.write_alpha_detail("alpha/1", {"id": "alpha/1"})
+    path_b = store.write_alpha_detail("alpha:1", {"id": "alpha:1"})
+
+    assert path_a.name != path_b.name
+    assert json.loads(path_a.read_text(encoding="utf-8"))["id"] == "alpha/1"
+    assert json.loads(path_b.read_text(encoding="utf-8"))["id"] == "alpha:1"
 
 
 def test_recordset_saving_preserves_json_and_wraps_raw_text(tmp_path) -> None:
@@ -119,6 +182,14 @@ def test_recordset_saving_preserves_json_and_wraps_raw_text(tmp_path) -> None:
 
     assert json.loads(json_path.read_text(encoding="utf-8")) == [{"date": "2026-01-01", "pnl": 0.1}]
     assert json.loads(raw_path.read_text(encoding="utf-8")) == {"raw_text": "not json"}
+
+
+def test_recordset_saving_preserves_existing_raw_text_wrapper(tmp_path) -> None:
+    store = RunStore(tmp_path / "run-1")
+
+    path = store.write_recordset("alpha-1", "logs", {"raw_text": "not json"})
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"raw_text": "not json"}
 
 
 def test_retry_queue_is_rewritten_for_failed_entries(tmp_path) -> None:
@@ -132,6 +203,7 @@ def test_retry_queue_is_rewritten_for_failed_entries(tmp_path) -> None:
     assert rows[0]["row_id"] == "r2"
     assert rows[0]["status"] == "poll_error"
     assert "timestamp" in rows[0]
+    assert not (tmp_path / "run-1" / "retry_queue.jsonl.tmp").exists()
 
 
 def test_summarize_alpha_extracts_metrics_and_checks() -> None:
@@ -178,7 +250,15 @@ def test_summarize_alpha_tolerates_missing_or_malformed_fields() -> None:
     malformed = summarize_alpha({"id": "alpha-2", "is": {"checks": ["bad", {"result": "FAIL"}]}})
 
     assert empty["alpha_id"] == ""
+    assert empty["status"] == ""
     assert empty["failed_checks"] == ""
     assert malformed["alpha_id"] == "alpha-2"
     assert malformed["sharpe"] == ""
     assert malformed["failed_checks"] == ""
+
+
+def test_summarize_alpha_accepts_poll_completion_shape() -> None:
+    row = summarize_alpha({"alpha": "alpha-1", "status": "COMPLETE"})
+
+    assert row["alpha_id"] == "alpha-1"
+    assert row["status"] == "COMPLETE"

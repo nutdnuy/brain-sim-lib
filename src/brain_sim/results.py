@@ -4,6 +4,7 @@ import csv
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timezone
 from enum import Enum
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -51,7 +52,9 @@ def _to_jsonable(value: Any) -> Any:
         return _to_jsonable(asdict(value))
     if isinstance(value, Mapping):
         return {str(key): _to_jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, set):
+        return sorted(_to_jsonable(item) for item in value)
+    if isinstance(value, (list, tuple)):
         return [_to_jsonable(item) for item in value]
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
@@ -74,6 +77,7 @@ def _json_dumps(payload: Any, *, pretty: bool) -> str:
 def _empty_summary_fragment() -> dict[str, Any]:
     return {
         "alpha_id": "",
+        "status": "",
         "sharpe": "",
         "fitness": "",
         "returns": "",
@@ -117,7 +121,7 @@ def summarize_alpha(alpha_body: dict[str, Any] | None) -> dict[str, Any]:
             pending.append(name)
 
     return {
-        "alpha_id": alpha_body.get("id", ""),
+        "alpha_id": alpha_body.get("id", alpha_body.get("alpha", "")),
         "status": alpha_body.get("status", ""),
         "sharpe": metrics.get("sharpe", ""),
         "fitness": metrics.get("fitness", ""),
@@ -144,7 +148,7 @@ class RunStore:
         self.write_json("manifest.json", payload)
 
     def write_json(self, relative_path: str | Path, payload: Any) -> Path:
-        path = self.run_dir / relative_path
+        path = self._resolve_relative(relative_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(_json_dumps(payload, pretty=True) + "\n", encoding="utf-8")
         return path
@@ -157,15 +161,15 @@ class RunStore:
         row_id: str | None = None,
         status: str | None = None,
     ) -> Path:
-        path = self.run_dir / relative_path
+        path = self._resolve_relative(relative_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         event = _to_jsonable(payload)
         if isinstance(event, dict):
-            event.setdefault("timestamp", _utc_now())
+            event["timestamp"] = event.get("timestamp", _utc_now())
             if row_id is not None:
-                event.setdefault("row_id", row_id)
+                event["row_id"] = row_id
             if status is not None:
-                event.setdefault("status", status)
+                event["status"] = status
         else:
             event = {
                 "timestamp": _utc_now(),
@@ -186,7 +190,7 @@ class RunStore:
         status: str | None = None,
     ) -> Path:
         return self.append_jsonl(
-            Path("raw") / f"{event_name}.jsonl",
+            Path("raw") / f"{self._safe_filename(event_name)}.jsonl",
             payload,
             row_id=row_id,
             status=status,
@@ -196,6 +200,11 @@ class RunStore:
         path = self.run_dir / "summary.csv"
         path.parent.mkdir(parents=True, exist_ok=True)
         file_exists = path.exists() and path.stat().st_size > 0
+        if file_exists:
+            with path.open(newline="", encoding="utf-8") as f:
+                existing_header = next(csv.reader(f), [])
+            if existing_header != SUMMARY_FIELDS:
+                raise ValueError("summary.csv header does not match current schema")
         with path.open("a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=SUMMARY_FIELDS, extrasaction="ignore")
             if not file_exists:
@@ -223,15 +232,29 @@ class RunStore:
     def write_retry_queue(self, rows: Iterable[dict[str, Any]]) -> Path:
         path = self.run_dir / "retry_queue.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
+        temp_path = path.with_suffix(path.suffix + ".tmp")
+        with temp_path.open("w", encoding="utf-8") as f:
             for row in rows:
                 clean = _to_jsonable(row)
                 if isinstance(clean, dict):
                     clean.setdefault("timestamp", _utc_now())
                 f.write(_json_dumps(clean, pretty=False) + "\n")
+        temp_path.replace(path)
         return path
 
     @staticmethod
     def _safe_filename(value: str) -> str:
         text = value.strip() or "unknown"
-        return "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in text)
+        stem = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in text)
+        digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+        return f"{stem}-{digest}"
+
+    def _resolve_relative(self, relative_path: str | Path) -> Path:
+        path = Path(relative_path)
+        if path.is_absolute():
+            raise ValueError("artifact path must be relative")
+        resolved = (self.run_dir / path).resolve()
+        root = self.run_dir.resolve()
+        if resolved != root and root not in resolved.parents:
+            raise ValueError("artifact path escapes run directory")
+        return resolved
