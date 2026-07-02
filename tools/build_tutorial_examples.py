@@ -70,6 +70,10 @@ def _normalize_core_properties(data: bytes) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=False)
 
 
+def _canonicalize_xml(data: bytes) -> bytes:
+    return ET.canonicalize(data.decode("utf-8")).encode("utf-8")
+
+
 def _normalize_xlsx_zip(path: Path) -> None:
     with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temp_file:
         temp_path = Path(temp_file.name)
@@ -86,6 +90,8 @@ def _normalize_xlsx_zip(path: Path) -> None:
                     data = source.read(source_info.filename)
                     if source_info.filename == "docProps/core.xml":
                         data = _normalize_core_properties(data)
+                    if source_info.filename.endswith((".xml", ".rels")):
+                        data = _canonicalize_xml(data)
                     target_info = zipfile.ZipInfo(source_info.filename, FIXED_ZIP_DATETIME)
                     target_info.compress_type = zipfile.ZIP_DEFLATED
                     target_info.create_system = 0
