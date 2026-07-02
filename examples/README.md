@@ -1,14 +1,21 @@
 # brain-sim Examples
 
-This folder contains tutorial notebooks and sample assets for learning `brain-sim`.
+This folder contains Riskfolio-Lib-style tutorial notebooks and deterministic sample assets for learning `brain-sim`.
 
-The tutorials are designed to run offline first. They use deterministic fake BRAIN clients unless a section explicitly shows terminal commands for a live authenticated run.
+The tutorials are offline-safe by default. Live BRAIN sections are included, but notebook code only submits to WorldQuant BRAIN when `BRAIN_SIM_RUN_LIVE=1` is set.
 
 ## Tutorials
 
-| Tutorial | Description | Assets |
-|---|---|---|
-| [Tutorial 1 - Excel Batch Alpha Simulation.ipynb](Tutorial%201%20-%20Excel%20Batch%20Alpha%20Simulation.ipynb) | Build an Excel alpha queue, run an offline batch simulation, and inspect `summary.csv` / `retry_queue.jsonl`. | [data/tutorial_01_alphas.xlsx](data/tutorial_01_alphas.xlsx), [expected/tutorial_01_summary.csv](expected/tutorial_01_summary.csv) |
+| # | Tutorial | Main features | Assets |
+|---|---|---|---|
+| 1 | [Tutorial 1 - Installation And Project Tour](Tutorial%201%20-%20Installation%20And%20Project%20Tour.ipynb) | editable install, CLI help, repo layout, ignored safety paths | - |
+| 2 | [Tutorial 2 - Login And Persona Verification](Tutorial%202%20-%20Login%20And%20Persona%20Verification.ipynb) | credentials format, Persona link, SMTP notification, cookie reload | safe local demo artifacts |
+| 3 | [Tutorial 3 - Excel Alpha Queue And Payloads](Tutorial%203%20-%20Excel%20Alpha%20Queue%20And%20Payloads.ipynb) | Excel schema, settings overrides, metadata, payload hashing, validation errors | [tutorial_03_mixed_settings.xlsx](data/tutorial_03_mixed_settings.xlsx), [tutorial_03_invalid_missing_expression.xlsx](data/tutorial_03_invalid_missing_expression.xlsx) |
+| 4 | [Tutorial 4 - Live Excel Batch Simulation](Tutorial%204%20-%20Live%20Excel%20Batch%20Simulation.ipynb) | live guarded CLI flow, `auto`/`8`/`4`/`1` batching, timeout settings | [tutorial_04_live_alphas.xlsx](data/tutorial_04_live_alphas.xlsx), [tutorial_04_live_offline_summary.csv](expected/tutorial_04_live_offline_summary.csv) |
+| 5 | [Tutorial 5 - Batch Fallback Timeouts And Retry Queue](Tutorial%205%20-%20Batch%20Fallback%20Timeouts%20And%20Retry%20Queue.ipynb) | 8 -> 4 fallback, pending timeouts, retry queue review | [tutorial_05_fallback_alphas.xlsx](data/tutorial_05_fallback_alphas.xlsx), [tutorial_05_fallback_summary.csv](expected/tutorial_05_fallback_summary.csv) |
+| 6 | [Tutorial 6 - Duplicate Cache And Re-Runs](Tutorial%206%20-%20Duplicate%20Cache%20And%20Re-Runs.ipynb) | SQLite cache, skipped duplicates, hash-changing rules | [tutorial_06_duplicate_alphas.xlsx](data/tutorial_06_duplicate_alphas.xlsx), [tutorial_06_second_run_summary.csv](expected/tutorial_06_second_run_summary.csv) |
+| 7 | [Tutorial 7 - Results Raw Logs And Recordsets](Tutorial%207%20-%20Results%20Raw%20Logs%20And%20Recordsets.ipynb) | summary CSV, raw JSONL, alpha details, `pnl`/`sharpe` recordsets | [tutorial_07_recordset_alphas.xlsx](data/tutorial_07_recordset_alphas.xlsx), [tutorial_07_recordset_summary.csv](expected/tutorial_07_recordset_summary.csv) |
+| 8 | [Tutorial 8 - Python API Workflow](Tutorial%208%20-%20Python%20API%20Workflow.ipynb) | `BrainAuth`, `BrainClient`, `BatchRunner`, `RunStore`, custom automation | [tutorial_08_api_alphas.xlsx](data/tutorial_08_api_alphas.xlsx) |
 
 ## Run Locally
 
@@ -21,14 +28,21 @@ python -m pip install -e ".[dev]"
 python -m pip install notebook
 ```
 
-Open the notebook:
+Open the examples:
 
 ```bash
-jupyter notebook "examples/Tutorial 1 - Excel Batch Alpha Simulation.ipynb"
+jupyter notebook examples
 ```
-
-You can also inspect the notebook on GitHub. Run the live CLI section only after `brain-sim login`, and only when you understand it consumes WorldQuant BRAIN simulation quota.
 
 ## Live BRAIN Runs
 
-The tutorial includes live command examples, but the executable notebook cells are offline by default. Live runs consume WorldQuant BRAIN simulation quota and require a valid Persona-authenticated cookie created by `brain-sim login`.
+Live examples consume WorldQuant BRAIN simulation quota and require cookies from `brain-sim login`.
+
+Run live notebook cells only after you intentionally enable them:
+
+```bash
+export BRAIN_SIM_RUN_LIVE=1
+jupyter notebook examples
+```
+
+Keep credentials outside notebooks. Use `~/.brain_credentials` or `brain-sim login --prompt`, and never commit `.brain_sim/`, `runs/`, or `examples/runs/`.

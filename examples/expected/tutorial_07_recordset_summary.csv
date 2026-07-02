@@ -1,0 +1,3 @@
+row_id,alpha_hash,status,alpha_id,simulation_location,sharpe,fitness,returns,turnover,drawdown,margin,longCount,shortCount,failed_checks,warning_checks,pending_checks,error
+recordset-001,recordset-hash-1,complete,recordset-alpha-1,/simulations/tutorial-1,1.10,0.60,0.04,0.11,0.03,,,,,,,
+recordset-002,recordset-hash-2,complete,recordset-alpha-2,/simulations/tutorial-2,1.20,0.70,0.05,0.12,0.04,,,,,,,

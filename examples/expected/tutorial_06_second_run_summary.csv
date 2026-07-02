@@ -1,0 +1,3 @@
+row_id,alpha_hash,status,alpha_id,simulation_location,sharpe,fitness,returns,turnover,drawdown,margin,longCount,shortCount,failed_checks,warning_checks,pending_checks,error
+duplicate-001,duplicate-hash-1,skipped_duplicate,duplicate-alpha-1,,,,,,,,,,,,,
+duplicate-002,duplicate-hash-2,skipped_duplicate,duplicate-alpha-2,,,,,,,,,,,,,

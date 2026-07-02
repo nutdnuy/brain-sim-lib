@@ -124,13 +124,21 @@ brain-sim simulate-excel alphas.xlsx --batch-size 4 --poll-timeout-seconds 1800
 
 ## Examples
 
-Start with the offline tutorial:
+Start with the tutorial suite:
 
-- [Tutorial 1 - Excel Batch Alpha Simulation](examples/Tutorial%201%20-%20Excel%20Batch%20Alpha%20Simulation.ipynb)
+- [Examples index](examples/README.md)
+- [Tutorial 1 - Installation And Project Tour](examples/Tutorial%201%20-%20Installation%20And%20Project%20Tour.ipynb)
+- [Tutorial 2 - Login And Persona Verification](examples/Tutorial%202%20-%20Login%20And%20Persona%20Verification.ipynb)
+- [Tutorial 3 - Excel Alpha Queue And Payloads](examples/Tutorial%203%20-%20Excel%20Alpha%20Queue%20And%20Payloads.ipynb)
+- [Tutorial 4 - Live Excel Batch Simulation](examples/Tutorial%204%20-%20Live%20Excel%20Batch%20Simulation.ipynb)
+- [Tutorial 5 - Batch Fallback Timeouts And Retry Queue](examples/Tutorial%205%20-%20Batch%20Fallback%20Timeouts%20And%20Retry%20Queue.ipynb)
+- [Tutorial 6 - Duplicate Cache And Re-Runs](examples/Tutorial%206%20-%20Duplicate%20Cache%20And%20Re-Runs.ipynb)
+- [Tutorial 7 - Results Raw Logs And Recordsets](examples/Tutorial%207%20-%20Results%20Raw%20Logs%20And%20Recordsets.ipynb)
+- [Tutorial 8 - Python API Workflow](examples/Tutorial%208%20-%20Python%20API%20Workflow.ipynb)
 
-Notebook path: `examples/Tutorial 1 - Excel Batch Alpha Simulation.ipynb`
+The notebooks cover installation, login, Excel schemas, payload hashing, live guarded batch simulation, fallback behavior, duplicate cache, output artifacts, recordsets, and Python API automation.
 
-The notebook builds a sample Excel alpha queue, runs an offline tutorial simulation with a fake BRAIN client, and explains that live BRAIN runs consume simulation quota and should be run only after `brain-sim login`.
+Notebook code is offline-safe by default. Live BRAIN cells run only when `BRAIN_SIM_RUN_LIVE=1` is set and still require cookies from `brain-sim login`.
 
 ## Batch Policy
 
