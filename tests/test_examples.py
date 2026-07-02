@@ -152,7 +152,6 @@ def test_tutorial_code_cells_execute_offline(tmp_path, monkeypatch) -> None:
     namespace: dict[str, object] = module.__dict__
     monkeypatch.setitem(sys.modules, module.__name__, module)
     monkeypatch.chdir(ROOT)
-    run_dir = ROOT / "examples" / "runs" / "tutorial_01_offline"
 
     for index, cell in enumerate(notebook["cells"]):
         if cell.get("cell_type") != "code":
@@ -160,10 +159,8 @@ def test_tutorial_code_cells_execute_offline(tmp_path, monkeypatch) -> None:
         source = "".join(cell.get("source", []))
         compiled = compile(source, f"{NOTEBOOK.name}:cell-{index}", "exec")
         exec(compiled, namespace)
-        if "RUN_DIR =" in source:
-            namespace["RUN_DIR"] = run_dir
 
-    summary_path = run_dir / "summary.csv"
+    summary_path = ROOT / "examples" / "runs" / "tutorial_01_offline" / "summary.csv"
     assert summary_path.exists()
     with summary_path.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))

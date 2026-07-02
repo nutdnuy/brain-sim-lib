@@ -224,7 +224,7 @@ CWD = Path.cwd().resolve()
 ROOT = CWD if (CWD / "examples").exists() else CWD.parent if CWD.name == "examples" else CWD
 EXAMPLE_DIR = ROOT / "examples"
 EXCEL_PATH = EXAMPLE_DIR / "data" / "tutorial_01_alphas.xlsx"
-RUN_DIR = ROOT / "runs" / "tutorial-01-offline"
+RUN_DIR = EXAMPLE_DIR / "runs" / "tutorial_01_offline"
 EXPECTED_SUMMARY_PATH = EXAMPLE_DIR / "expected" / "tutorial_01_summary.csv"
 
 print(f"Using Excel queue: {EXCEL_PATH}")
