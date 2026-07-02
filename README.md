@@ -95,6 +95,8 @@ Default simulation settings are conservative USA equity settings unless overridd
 
 ## Simulate
 
+Live BRAIN simulations require saved cookies from `brain-sim login` and consume WorldQuant BRAIN simulation quota.
+
 Run automatic batching:
 
 ```bash
@@ -119,6 +121,16 @@ Use a longer polling timeout for busy BRAIN queues:
 ```bash
 brain-sim simulate-excel alphas.xlsx --batch-size 4 --poll-timeout-seconds 1800
 ```
+
+## Examples
+
+Start with the offline tutorial:
+
+- [Tutorial 1 - Excel Batch Alpha Simulation](examples/Tutorial%201%20-%20Excel%20Batch%20Alpha%20Simulation.ipynb)
+
+Notebook path: `examples/Tutorial 1 - Excel Batch Alpha Simulation.ipynb`
+
+The notebook builds a sample Excel alpha queue, runs an offline tutorial simulation with a fake BRAIN client, and explains that live BRAIN runs consume simulation quota and should be run only after `brain-sim login`.
 
 ## Batch Policy
 
