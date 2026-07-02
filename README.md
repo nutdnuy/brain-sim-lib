@@ -124,9 +124,13 @@ brain-sim simulate-excel alphas.xlsx --batch-size 4 --poll-timeout-seconds 1800
 
 ## Examples
 
-Start with the tutorial suite:
+New to BRAIN automation or this library? Start with the beginner notebook:
 
 - [Examples index](examples/README.md)
+- [Tutorial 0 - Start Here For Beginners](examples/Tutorial%200%20-%20Start%20Here%20For%20Beginners.ipynb)
+
+Then continue through the feature tutorials:
+
 - [Tutorial 1 - Installation And Project Tour](examples/Tutorial%201%20-%20Installation%20And%20Project%20Tour.ipynb)
 - [Tutorial 2 - Login And Persona Verification](examples/Tutorial%202%20-%20Login%20And%20Persona%20Verification.ipynb)
 - [Tutorial 3 - Excel Alpha Queue And Payloads](examples/Tutorial%203%20-%20Excel%20Alpha%20Queue%20And%20Payloads.ipynb)
@@ -136,7 +140,7 @@ Start with the tutorial suite:
 - [Tutorial 7 - Results Raw Logs And Recordsets](examples/Tutorial%207%20-%20Results%20Raw%20Logs%20And%20Recordsets.ipynb)
 - [Tutorial 8 - Python API Workflow](examples/Tutorial%208%20-%20Python%20API%20Workflow.ipynb)
 
-The notebooks cover installation, login, Excel schemas, payload hashing, live guarded batch simulation, fallback behavior, duplicate cache, output artifacts, recordsets, and Python API automation.
+Tutorial 0 avoids login, live API calls, and batch internals. The feature notebooks then cover installation, login, Excel schemas, payload hashing, live guarded batch simulation, fallback behavior, duplicate cache, output artifacts, recordsets, and Python API automation.
 
 Notebook code is offline-safe by default. Live BRAIN cells run only when `BRAIN_SIM_RUN_LIVE=1` is set and still require cookies from `brain-sim login`.
 

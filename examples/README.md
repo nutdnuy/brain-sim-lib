@@ -1,13 +1,31 @@
 # brain-sim Examples
 
-This folder contains Riskfolio-Lib-style tutorial notebooks and deterministic sample assets for learning `brain-sim`.
+This folder contains beginner-first, Riskfolio-Lib-style tutorial notebooks and deterministic sample assets for learning `brain-sim`.
 
 The tutorials are offline-safe by default. Live BRAIN sections are included, but notebook code only submits to WorldQuant BRAIN when `BRAIN_SIM_RUN_LIVE=1` is set.
+
+## New To This?
+
+Start here:
+
+- [Tutorial 0 - Start Here For Beginners](Tutorial%200%20-%20Start%20Here%20For%20Beginners.ipynb)
+
+This notebook avoids login, live BRAIN calls, API classes, and batch internals. It only explains the core workflow: Excel input, simulation output, summary review, and the first live command to run later.
+
+Recommended beginner path:
+
+1. Tutorial 0 - Start Here For Beginners
+2. Tutorial 1 - Installation And Project Tour
+3. Tutorial 3 - Excel Alpha Queue And Payloads
+4. Tutorial 4 - Live Excel Batch Simulation
+5. Tutorial 6 - Duplicate Cache And Re-Runs
+6. Tutorial 7 - Results Raw Logs And Recordsets
 
 ## Tutorials
 
 | # | Tutorial | Main features | Assets |
 |---|---|---|---|
+| 0 | [Tutorial 0 - Start Here For Beginners](Tutorial%200%20-%20Start%20Here%20For%20Beginners.ipynb) | plain-English workflow, sample Excel preview, summary CSV preview, first safe live commands | [tutorial_04_live_alphas.xlsx](data/tutorial_04_live_alphas.xlsx), [tutorial_04_live_offline_summary.csv](expected/tutorial_04_live_offline_summary.csv) |
 | 1 | [Tutorial 1 - Installation And Project Tour](Tutorial%201%20-%20Installation%20And%20Project%20Tour.ipynb) | editable install, CLI help, repo layout, ignored safety paths | - |
 | 2 | [Tutorial 2 - Login And Persona Verification](Tutorial%202%20-%20Login%20And%20Persona%20Verification.ipynb) | credentials format, Persona link, SMTP notification, cookie reload | safe local demo artifacts |
 | 3 | [Tutorial 3 - Excel Alpha Queue And Payloads](Tutorial%203%20-%20Excel%20Alpha%20Queue%20And%20Payloads.ipynb) | Excel schema, settings overrides, metadata, payload hashing, validation errors | [tutorial_03_mixed_settings.xlsx](data/tutorial_03_mixed_settings.xlsx), [tutorial_03_invalid_missing_expression.xlsx](data/tutorial_03_invalid_missing_expression.xlsx) |
