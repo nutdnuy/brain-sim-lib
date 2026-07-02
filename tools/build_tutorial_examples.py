@@ -82,15 +82,14 @@ def _normalize_xlsx_zip(path: Path) -> None:
                 compression=zipfile.ZIP_DEFLATED,
                 compresslevel=9,
             ) as target:
-                for source_info in source.infolist():
+                for source_info in sorted(source.infolist(), key=lambda info: info.filename):
                     data = source.read(source_info.filename)
                     if source_info.filename == "docProps/core.xml":
                         data = _normalize_core_properties(data)
                     target_info = zipfile.ZipInfo(source_info.filename, FIXED_ZIP_DATETIME)
                     target_info.compress_type = zipfile.ZIP_DEFLATED
                     target_info.create_system = 0
-                    target_info.external_attr = source_info.external_attr
-                    target_info.comment = source_info.comment
+                    target_info.external_attr = 0o600 << 16
                     target.writestr(target_info, data)
         temp_path.replace(path)
     except Exception:
@@ -215,7 +214,8 @@ from brain_sim.payloads import build_payload_record
 
 
 DRY_RUN = True
-ROOT = Path.cwd().resolve()
+CWD = Path.cwd().resolve()
+ROOT = CWD if (CWD / "examples").exists() else CWD.parent if CWD.name == "examples" else CWD
 EXAMPLE_DIR = ROOT / "examples"
 EXCEL_PATH = EXAMPLE_DIR / "data" / "tutorial_01_alphas.xlsx"
 RUN_DIR = ROOT / "runs" / "tutorial-01-offline"
@@ -325,6 +325,9 @@ class FakeTutorialBrainClient:
     def fetch_recordset(self, alpha_id: str, recordset_name: str) -> dict[str, Any]:
         return {"alpha_id": alpha_id, "recordset": recordset_name, "rows": []}
 
+
+if not DRY_RUN:
+    raise RuntimeError("This tutorial run cell only executes in DRY_RUN mode.")
 
 shutil.rmtree(RUN_DIR, ignore_errors=True)
 tutorial_client_class = FakeTutorialBrainClient
