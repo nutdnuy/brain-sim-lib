@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brain-sim"
+version = "0.1.0"
+description = "Professional WorldQuant BRAIN alpha simulation library and CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31.0",
+  "openpyxl>=3.1.2"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "requests-mock>=1.12.1"
+]
+
+[project.scripts]
+brain-sim = "brain_sim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
