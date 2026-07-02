@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
+from urllib.parse import urljoin
 
 import requests
 
@@ -38,7 +41,29 @@ def _read_body(response: requests.Response) -> Any:
 def _optional_int(value: str | None) -> int | None:
     if value in (None, ""):
         return None
-    return int(float(value))
+    try:
+        return int(float(value))
+    except ValueError:
+        return None
+
+
+def parse_retry_after(value: str | None, *, now: datetime | None = None) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    try:
+        retry_at = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    return max(0.0, (retry_at - current).total_seconds())
 
 
 def parse_rate_limit(headers: Mapping[str, str]) -> RateLimitState:
@@ -64,9 +89,10 @@ class BrainClient:
 
     def submit(self, payload: dict[str, Any] | list[dict[str, Any]]) -> SubmitResult:
         response = self.session.post(f"{self.api_base}/simulations", json=payload, timeout=60)
+        location = response.headers.get("Location", "")
         return SubmitResult(
             status_code=response.status_code,
-            location=response.headers.get("Location", ""),
+            location=urljoin(response.url, location) if location else "",
             body=_read_body(response),
             headers=dict(response.headers),
             rate_limit=parse_rate_limit(response.headers),
@@ -74,9 +100,10 @@ class BrainClient:
 
     def poll(self, location: str, *, timeout_seconds: float) -> PollResult:
         deadline = time.monotonic() + timeout_seconds
+        url = urljoin(f"{self.api_base}/", location)
         events: list[dict[str, Any]] = []
         while True:
-            response = self.session.get(location, timeout=60)
+            response = self.session.get(url, timeout=60)
             body = _read_body(response)
             retry_after = response.headers.get("Retry-After")
             events.append(
@@ -86,10 +113,12 @@ class BrainClient:
                     "body": body,
                 }
             )
-            if retry_after and float(retry_after) > 0:
-                if time.monotonic() >= deadline:
+            retry_delay = parse_retry_after(retry_after)
+            if retry_delay and retry_delay > 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     return PollResult(status="pending_timeout", body=body, events=events)
-                time.sleep(min(float(retry_after), self.max_sleep_seconds))
+                time.sleep(min(retry_delay, self.max_sleep_seconds, remaining))
                 if time.monotonic() >= deadline:
                     return PollResult(status="pending_timeout", body=body, events=events)
                 continue
