@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import requests
 
+import brain_sim.client as client_module
 from brain_sim.client import BrainClient, parse_rate_limit
 
 
@@ -74,4 +75,22 @@ def test_poll_returns_timeout_when_retry_sleep_crosses_deadline(requests_mock) -
 
     assert result.status == "pending_timeout"
     assert result.body == {"progress": 0.2}
+    assert len(result.events) == 1
+
+
+def test_poll_rejects_completion_after_deadline_elapsed(requests_mock, monkeypatch) -> None:
+    clock_values = iter([0.0, 1.1])
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: next(clock_values))
+    session = requests.Session()
+    requests_mock.get(
+        "https://api.worldquantbrain.com/simulations/sim-1",
+        status_code=200,
+        json={"alpha": "alpha-1", "status": "COMPLETE"},
+    )
+    client = BrainClient(session=session)
+
+    result = client.poll("https://api.worldquantbrain.com/simulations/sim-1", timeout_seconds=1)
+
+    assert result.status == "pending_timeout"
+    assert result.body == {"alpha": "alpha-1", "status": "COMPLETE"}
     assert len(result.events) == 1
