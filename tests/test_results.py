@@ -58,6 +58,15 @@ def test_append_jsonl_context_overrides_body_row_and_status(tmp_path) -> None:
     assert rows[0]["tags"] == ["a", "b"]
 
 
+def test_append_jsonl_serializes_mixed_type_sets_deterministically(tmp_path) -> None:
+    store = RunStore(tmp_path / "run-1")
+
+    store.append_jsonl("events.jsonl", {"tags": {1, "1"}})
+
+    rows = read_jsonl(tmp_path / "run-1" / "events.jsonl")
+    assert rows[0]["tags"] == ["1", 1]
+
+
 def test_write_json_and_append_jsonl_reject_paths_outside_run_dir(tmp_path) -> None:
     store = RunStore(tmp_path / "run-1")
 

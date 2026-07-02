@@ -53,7 +53,7 @@ def _to_jsonable(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _to_jsonable(item) for key, item in value.items()}
     if isinstance(value, set):
-        return sorted(_to_jsonable(item) for item in value)
+        return sorted((_to_jsonable(item) for item in value), key=lambda item: json.dumps(item, sort_keys=True, default=str))
     if isinstance(value, (list, tuple)):
         return [_to_jsonable(item) for item in value]
     if isinstance(value, bytes):
