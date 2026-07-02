@@ -5,7 +5,7 @@ from email.utils import parsedate_to_datetime
 import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
-from urllib.parse import urljoin
+from urllib.parse import urlparse
 
 import requests
 
@@ -43,7 +43,7 @@ def _optional_int(value: str | None) -> int | None:
         return None
     try:
         return int(float(value))
-    except ValueError:
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -75,6 +75,20 @@ def parse_rate_limit(headers: Mapping[str, str]) -> RateLimitState:
     )
 
 
+def _terminal_status(body: Any) -> str | None:
+    if not isinstance(body, dict):
+        return None
+
+    status = str(body.get("status", "")).upper()
+    if status in {"COMPLETE", "COMPLETED", "SUCCESS", "DONE"}:
+        return "complete"
+    if status in {"FAILED", "FAILURE", "ERROR"} or "error" in body:
+        return "poll_error"
+    if body.get("alpha") or body.get("alpha_id") or body.get("alphaId"):
+        return "complete"
+    return None
+
+
 class BrainClient:
     def __init__(
         self,
@@ -82,17 +96,31 @@ class BrainClient:
         session: requests.Session | None = None,
         api_base: str = API_BASE,
         max_sleep_seconds: float = 30.0,
+        request_timeout_seconds: float = 60.0,
+        min_poll_interval_seconds: float = 1.0,
     ) -> None:
         self.session = session or requests.Session()
         self.api_base = api_base.rstrip("/")
         self.max_sleep_seconds = max_sleep_seconds
+        self.request_timeout_seconds = request_timeout_seconds
+        self.min_poll_interval_seconds = min_poll_interval_seconds
+
+    def _url(self, path_or_url: str) -> str:
+        parsed = urlparse(path_or_url)
+        if parsed.scheme and parsed.netloc:
+            return path_or_url
+        return f"{self.api_base}/{path_or_url.lstrip('/')}"
 
     def submit(self, payload: dict[str, Any] | list[dict[str, Any]]) -> SubmitResult:
-        response = self.session.post(f"{self.api_base}/simulations", json=payload, timeout=60)
+        response = self.session.post(
+            self._url("simulations"),
+            json=payload,
+            timeout=self.request_timeout_seconds,
+        )
         location = response.headers.get("Location", "")
         return SubmitResult(
             status_code=response.status_code,
-            location=urljoin(response.url, location) if location else "",
+            location=self._url(location) if location else "",
             body=_read_body(response),
             headers=dict(response.headers),
             rate_limit=parse_rate_limit(response.headers),
@@ -100,10 +128,18 @@ class BrainClient:
 
     def poll(self, location: str, *, timeout_seconds: float) -> PollResult:
         deadline = time.monotonic() + timeout_seconds
-        url = urljoin(f"{self.api_base}/", location)
+        url = self._url(location)
         events: list[dict[str, Any]] = []
         while True:
-            response = self.session.get(url, timeout=60)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return PollResult(status="pending_timeout", body=None, events=events)
+            request_timeout = min(self.request_timeout_seconds, remaining)
+            try:
+                response = self.session.get(url, timeout=request_timeout)
+            except requests.Timeout as exc:
+                events.append({"exception": type(exc).__name__, "message": str(exc)})
+                return PollResult(status="pending_timeout", body=None, events=events)
             body = _read_body(response)
             retry_after = response.headers.get("Retry-After")
             events.append(
@@ -113,28 +149,39 @@ class BrainClient:
                     "body": body,
                 }
             )
-            retry_delay = parse_retry_after(retry_after)
-            if retry_delay and retry_delay > 0:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return PollResult(status="pending_timeout", body=body, events=events)
-                time.sleep(min(retry_delay, self.max_sleep_seconds, remaining))
-                if time.monotonic() >= deadline:
-                    return PollResult(status="pending_timeout", body=body, events=events)
-                continue
             if time.monotonic() > deadline:
                 return PollResult(status="pending_timeout", body=body, events=events)
             if not response.ok:
                 return PollResult(status="poll_error", body=body, events=events)
-            return PollResult(status="complete", body=body, events=events)
+            status = _terminal_status(body)
+            if status:
+                return PollResult(status=status, body=body, events=events)
+
+            retry_delay = parse_retry_after(retry_after)
+            if retry_delay is None or retry_delay <= 0:
+                retry_delay = self.min_poll_interval_seconds
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return PollResult(status="pending_timeout", body=body, events=events)
+            sleep_seconds = min(max(retry_delay, 0.0), self.max_sleep_seconds, remaining)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+            if time.monotonic() >= deadline:
+                return PollResult(status="pending_timeout", body=body, events=events)
 
     def fetch_alpha(self, alpha_id: str) -> dict[str, Any]:
-        response = self.session.get(f"{self.api_base}/alphas/{alpha_id}", timeout=60)
+        response = self.session.get(
+            self._url(f"alphas/{alpha_id}"),
+            timeout=self.request_timeout_seconds,
+        )
         response.raise_for_status()
-        return response.json()
+        body = _read_body(response)
+        if not isinstance(body, dict):
+            raise ValueError(f"Expected alpha response object for {alpha_id}")
+        return body
 
     def fetch_recordset(self, alpha_id: str, recordset_name: str) -> Any:
-        url = f"{self.api_base}/alphas/{alpha_id}/recordsets/{recordset_name}"
-        response = self.session.get(url, timeout=60)
+        url = self._url(f"alphas/{alpha_id}/recordsets/{recordset_name}")
+        response = self.session.get(url, timeout=self.request_timeout_seconds)
         response.raise_for_status()
         return _read_body(response)
