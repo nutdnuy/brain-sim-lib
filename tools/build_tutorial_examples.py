@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import csv
 import json
+import tempfile
+import zipfile
+import xml.etree.ElementTree as ET
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +19,18 @@ EXPECTED_DIR = EXAMPLES / "expected"
 NOTEBOOK_PATH = EXAMPLES / "Tutorial 1 - Excel Batch Alpha Simulation.ipynb"
 WORKBOOK_PATH = DATA_DIR / "tutorial_01_alphas.xlsx"
 SUMMARY_PATH = EXPECTED_DIR / "tutorial_01_summary.csv"
+FIXED_WORKBOOK_DATETIME = datetime(2026, 1, 1, 0, 0, 0)
+FIXED_WORKBOOK_TIMESTAMP = "2026-01-01T00:00:00Z"
+FIXED_ZIP_DATETIME = (2026, 1, 1, 0, 0, 0)
+CORE_XML_NAMESPACES = {
+    "cp": "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
+    "dc": "http://purl.org/dc/elements/1.1/",
+    "dcterms": "http://purl.org/dc/terms/",
+    "xsi": "http://www.w3.org/2001/XMLSchema-instance",
+}
+
+for prefix, uri in CORE_XML_NAMESPACES.items():
+    ET.register_namespace(prefix, uri)
 
 ALPHA_ROWS = [
     ("tutorial-001", "rank(ts_mean(volume, 10))"),
@@ -44,9 +60,49 @@ SUMMARY_FIELDS = [
 ]
 
 
+def _normalize_core_properties(data: bytes) -> bytes:
+    root = ET.fromstring(data)
+    dcterms = CORE_XML_NAMESPACES["dcterms"]
+    for tag_name in ("created", "modified"):
+        element = root.find(f"{{{dcterms}}}{tag_name}")
+        if element is not None:
+            element.text = FIXED_WORKBOOK_TIMESTAMP
+    return ET.tostring(root, encoding="utf-8", xml_declaration=False)
+
+
+def _normalize_xlsx_zip(path: Path) -> None:
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temp_file:
+        temp_path = Path(temp_file.name)
+
+    try:
+        with zipfile.ZipFile(path, "r") as source:
+            with zipfile.ZipFile(
+                temp_path,
+                "w",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            ) as target:
+                for source_info in source.infolist():
+                    data = source.read(source_info.filename)
+                    if source_info.filename == "docProps/core.xml":
+                        data = _normalize_core_properties(data)
+                    target_info = zipfile.ZipInfo(source_info.filename, FIXED_ZIP_DATETIME)
+                    target_info.compress_type = zipfile.ZIP_DEFLATED
+                    target_info.create_system = 0
+                    target_info.external_attr = source_info.external_attr
+                    target_info.comment = source_info.comment
+                    target.writestr(target_info, data)
+        temp_path.replace(path)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
 def build_workbook() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
+    workbook.properties.created = FIXED_WORKBOOK_DATETIME
+    workbook.properties.modified = FIXED_WORKBOOK_DATETIME
     sheet = workbook.active
     sheet.title = "alphas"
     sheet.append(
@@ -81,6 +137,7 @@ def build_workbook() -> None:
             ]
         )
     workbook.save(WORKBOOK_PATH)
+    _normalize_xlsx_zip(WORKBOOK_PATH)
 
 
 def build_expected_summary() -> None:
