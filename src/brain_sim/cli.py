@@ -50,6 +50,10 @@ def _timestamp_run_dir() -> Path:
     return Path("runs") / f"brain-sim-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 
+def _expanded_path(value: str) -> Path:
+    return Path(value).expanduser()
+
+
 def _batch_size(value: str) -> BatchSize:
     if value == "auto":
         return "auto"
@@ -60,33 +64,40 @@ def _command_login(args: argparse.Namespace) -> int:
     if args.prompt:
         email, password = _prompt_credentials()
     else:
-        email, password = load_credentials(args.credentials_file)
+        try:
+            email, password = load_credentials(str(_expanded_path(args.credentials_file)))
+        except Exception as exc:  # noqa: BLE001 - convert config failures into CLI-grade errors.
+            raise SystemExit(f"Could not load BRAIN credentials from {args.credentials_file}: {exc}") from exc
 
     notifier = SmtpNotifier() if args.notify_email else None
-    auth = BrainAuth(cookie_path=args.cookie_path, notifier=notifier)
+    cookie_path = _expanded_path(args.cookie_path)
+    auth = BrainAuth(cookie_path=cookie_path, notifier=notifier)
     result = auth.login(email, password, notify_email=args.notify_email)
 
     if isinstance(result, AuthChallenge):
         _write_login_link(result)
         if args.print_link or not args.notify_email:
             print(result.url)
+        if result.message:
+            print(result.message)
         print(f"Login verification required. Link saved to {LOGIN_LINK_PATH}.")
         return 2
 
-    print(f"Login succeeded. Cookies saved to {Path(args.cookie_path).expanduser()}.")
+    print(f"Login succeeded. Cookies saved to {cookie_path}.")
     return 0
 
 
 def _command_simulate_excel(args: argparse.Namespace) -> int:
     session = requests.Session()
-    auth = BrainAuth(session=session, cookie_path=args.cookie_path)
+    cookie_path = _expanded_path(args.cookie_path)
+    auth = BrainAuth(session=session, cookie_path=cookie_path)
     if not auth.load_saved_cookies():
         raise SystemExit(
-            f"No saved BRAIN cookies found at {args.cookie_path}. "
+            f"No saved BRAIN cookies found at {cookie_path}. "
             "Run `brain-sim login` first."
         )
 
-    run_dir = Path(args.run_dir) if args.run_dir else _timestamp_run_dir()
+    run_dir = _expanded_path(args.run_dir) if args.run_dir else _timestamp_run_dir()
     expressions = read_excel_expressions(args.excel_path, sheet_name=args.sheet or None)
     records = [build_payload_record(expression) for expression in expressions]
     client = BrainClient(session=session)

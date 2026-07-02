@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+import runpy
 
 import pytest
 
@@ -122,7 +124,7 @@ def test_login_challenge_prints_and_stores_link(monkeypatch, tmp_path, capsys) -
     )
 
     assert result == 2
-    assert created["cookie_path"] == "cookies.json"
+    assert created["cookie_path"] == Path("cookies.json")
     assert isinstance(created["notifier"], FakeNotifier)
     assert created["login"] == ("u@example.com", "secret", "me@example.com")
     assert "https://verify.example/inquiry" in capsys.readouterr().out
@@ -168,6 +170,15 @@ def test_login_success_returns_zero(monkeypatch, capsys) -> None:
 
     assert result == 0
     assert "Cookies saved to cookies.json" in capsys.readouterr().out
+
+
+def test_login_credentials_error_is_cli_grade(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "load_credentials", lambda path: (_ for _ in ()).throw(FileNotFoundError(path)))
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["login", "--credentials-file", "missing.json"])
+
+    assert "Could not load BRAIN credentials from missing.json" in str(exc.value)
 
 
 def test_login_prompt_uses_input_and_getpass(monkeypatch) -> None:
@@ -252,11 +263,54 @@ def test_simulate_excel_success_wires_dependencies_and_returns_zero(monkeypatch,
     )
 
     assert result == 0
-    assert calls["auth"][1] == cli.DEFAULT_COOKIE_PATH
+    assert calls["auth"][1] == (Path(cli.DEFAULT_COOKIE_PATH).expanduser())
     assert calls["runner_init"][1] == tmp_path / "run-1"
     assert calls["run"] == (["record-expr-1", "record-expr-2"], 4, 10.0, ["self"])
     printed = json.loads(capsys.readouterr().out)
     assert printed["failed"] == 0
+
+
+def test_simulate_excel_expands_cookie_and_run_paths(monkeypatch, tmp_path) -> None:
+    calls: dict[str, object] = {}
+    cookie_path = tmp_path / "cookies.json"
+    run_path = tmp_path / "run"
+
+    class FakeAuth:
+        def __init__(self, *, session, cookie_path):
+            calls["cookie_path"] = cookie_path
+
+        def load_saved_cookies(self):
+            return True
+
+    class FakeClient:
+        def __init__(self, *, session):
+            pass
+
+    class FakeRunner:
+        def __init__(self, client, run_dir):
+            calls["run_dir"] = run_dir
+
+        def run(self, records, *, batch_size, poll_timeout_seconds, recordsets):
+            return {"failed": 0}
+
+    monkeypatch.setattr(cli, "BrainAuth", FakeAuth)
+    monkeypatch.setattr(cli, "BrainClient", FakeClient)
+    monkeypatch.setattr(cli, "BatchRunner", FakeRunner)
+    monkeypatch.setattr(cli, "read_excel_expressions", lambda path, *, sheet_name=None: ["expr"])
+    monkeypatch.setattr(cli, "build_payload_record", lambda expression: expression)
+
+    assert cli.main(
+        [
+            "simulate-excel",
+            "alphas.xlsx",
+            "--cookie-path",
+            str(cookie_path),
+            "--run-dir",
+            str(run_path),
+        ]
+    ) == 0
+    assert calls["cookie_path"] == cookie_path
+    assert calls["run_dir"] == run_path
 
 
 def test_simulate_excel_failed_summary_returns_one(monkeypatch, tmp_path) -> None:
@@ -285,3 +339,12 @@ def test_simulate_excel_failed_summary_returns_one(monkeypatch, tmp_path) -> Non
     monkeypatch.setattr(cli, "build_payload_record", lambda expression: f"record-{expression}")
 
     assert cli.main(["simulate-excel", "alphas.xlsx", "--run-dir", str(tmp_path)]) == 1
+
+
+def test_module_execution_propagates_main_return_code(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "main", lambda: 7)
+
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("brain_sim", run_name="__main__")
+
+    assert exc.value.code == 7
