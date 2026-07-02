@@ -14,8 +14,9 @@ Professional Python library and CLI for WorldQuant BRAIN alpha simulation.
 
 ```bash
 cd /Users/nuthdanai/Desktop/02_Quant_Investment/brain-sim-lib
-python3 -m venv .venv
+/Users/nuthdanai/.local/bin/python3.11 -m venv .venv
 . .venv/bin/activate
+python --version
 python -m pip install -e ".[dev]"
 ```
 
