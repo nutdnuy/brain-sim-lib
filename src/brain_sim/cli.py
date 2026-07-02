@@ -72,7 +72,10 @@ def _command_login(args: argparse.Namespace) -> int:
     notifier = SmtpNotifier() if args.notify_email else None
     cookie_path = _expanded_path(args.cookie_path)
     auth = BrainAuth(cookie_path=cookie_path, notifier=notifier)
-    result = auth.login(email, password, notify_email=args.notify_email)
+    try:
+        result = auth.login(email, password, notify_email=args.notify_email)
+    except Exception as exc:  # noqa: BLE001 - present auth failures without a traceback.
+        raise SystemExit(f"BRAIN login failed: {exc}") from exc
 
     if isinstance(result, AuthChallenge):
         _write_login_link(result)
@@ -98,7 +101,8 @@ def _command_simulate_excel(args: argparse.Namespace) -> int:
         )
 
     run_dir = _expanded_path(args.run_dir) if args.run_dir else _timestamp_run_dir()
-    expressions = read_excel_expressions(args.excel_path, sheet_name=args.sheet or None)
+    excel_path = _expanded_path(args.excel_path)
+    expressions = read_excel_expressions(excel_path, sheet_name=args.sheet or None)
     records = [build_payload_record(expression) for expression in expressions]
     client = BrainClient(session=session)
     runner = BatchRunner(client, run_dir)

@@ -172,6 +172,23 @@ def test_login_success_returns_zero(monkeypatch, capsys) -> None:
     assert "Cookies saved to cookies.json" in capsys.readouterr().out
 
 
+def test_login_auth_failure_is_cli_grade(monkeypatch) -> None:
+    class FakeAuth:
+        def __init__(self, *, cookie_path, notifier=None):
+            pass
+
+        def login(self, email, password, *, notify_email=None):
+            raise RuntimeError("invalid credentials")
+
+    monkeypatch.setattr(cli, "BrainAuth", FakeAuth)
+    monkeypatch.setattr(cli, "load_credentials", lambda path: ("u@example.com", "bad"))
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["login"])
+
+    assert "BRAIN login failed: invalid credentials" in str(exc.value)
+
+
 def test_login_credentials_error_is_cli_grade(monkeypatch) -> None:
     monkeypatch.setattr(cli, "load_credentials", lambda path: (_ for _ in ()).throw(FileNotFoundError(path)))
 
@@ -311,6 +328,53 @@ def test_simulate_excel_expands_cookie_and_run_paths(monkeypatch, tmp_path) -> N
     ) == 0
     assert calls["cookie_path"] == cookie_path
     assert calls["run_dir"] == run_path
+
+
+def test_simulate_excel_expands_home_in_excel_cookie_and_run_paths(monkeypatch, tmp_path) -> None:
+    calls: dict[str, object] = {}
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    class FakeAuth:
+        def __init__(self, *, session, cookie_path):
+            calls["cookie_path"] = cookie_path
+
+        def load_saved_cookies(self):
+            return True
+
+    class FakeClient:
+        def __init__(self, *, session):
+            pass
+
+    class FakeRunner:
+        def __init__(self, client, run_dir):
+            calls["run_dir"] = run_dir
+
+        def run(self, records, *, batch_size, poll_timeout_seconds, recordsets):
+            return {"failed": 0}
+
+    def fake_read_excel(path, *, sheet_name=None):
+        calls["excel_path"] = path
+        return ["expr"]
+
+    monkeypatch.setattr(cli, "BrainAuth", FakeAuth)
+    monkeypatch.setattr(cli, "BrainClient", FakeClient)
+    monkeypatch.setattr(cli, "BatchRunner", FakeRunner)
+    monkeypatch.setattr(cli, "read_excel_expressions", fake_read_excel)
+    monkeypatch.setattr(cli, "build_payload_record", lambda expression: expression)
+
+    assert cli.main(
+        [
+            "simulate-excel",
+            "~/alphas.xlsx",
+            "--cookie-path",
+            "~/cookies.json",
+            "--run-dir",
+            "~/run",
+        ]
+    ) == 0
+    assert calls["excel_path"] == tmp_path / "alphas.xlsx"
+    assert calls["cookie_path"] == tmp_path / "cookies.json"
+    assert calls["run_dir"] == tmp_path / "run"
 
 
 def test_simulate_excel_failed_summary_returns_one(monkeypatch, tmp_path) -> None:
