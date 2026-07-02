@@ -95,6 +95,7 @@ RECORDSET_ROWS = [
 ]
 
 TUTORIALS = [
+    "Tutorial 0 - Start Here For Beginners.ipynb",
     "Tutorial 1 - Installation And Project Tour.ipynb",
     "Tutorial 2 - Login And Persona Verification.ipynb",
     "Tutorial 3 - Excel Alpha Queue And Payloads.ipynb",
@@ -470,9 +471,106 @@ print(f"Loaded {{len(payload_records)}} payload records from {{excel_path.name}}
 [(record.row_id, record.alpha_hash, record.payload["settings"]["universe"]) for record in payload_records]"""
 
 
-def build_tutorial_1() -> None:
+def build_tutorial_0() -> None:
     _write_notebook(
         TUTORIALS[0],
+        [
+            markdown_cell("""# Tutorial 0 - Start Here For Beginners
+
+Start here if you are new to WorldQuant BRAIN automation, Python packages, or Jupyter notebooks.
+
+This notebook does not log in, does not call the live BRAIN API, and does not consume simulation quota. It only shows the shape of the workflow: Excel in, run folder out, summary table for review."""),
+            markdown_cell("""## 1. The Whole Workflow In One Picture
+
+`brain-sim` has one job:
+
+1. You prepare an Excel file with alpha expressions.
+2. The library turns each row into a BRAIN simulation payload.
+3. BRAIN returns alpha results.
+4. The library saves a review folder with `summary.csv`, raw logs, alpha details, and retry information.
+
+For a beginner, the first goal is not live automation. The first goal is to understand the files."""),
+            code_cell("""from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+CWD = Path.cwd().resolve()
+ROOT = CWD if (CWD / "examples").exists() else CWD.parent if CWD.name == "examples" else CWD
+EXAMPLE_DIR = ROOT / "examples"
+DATA_DIR = EXAMPLE_DIR / "data"
+EXPECTED_DIR = EXAMPLE_DIR / "expected"
+
+print(f"Repo: {ROOT}")
+print(f"Sample Excel files live in: {DATA_DIR}")
+print(f"Expected output examples live in: {EXPECTED_DIR}")"""),
+            markdown_cell("""## 2. Look At A Sample Excel Queue
+
+The minimum useful spreadsheet has one row per alpha expression. The important beginner columns are:
+
+- `id`: your name for the row
+- `expression`: the Fast Expression sent to BRAIN
+- `region`, `universe`, `delay`: the simulation setting context
+
+Advanced settings can wait until Tutorial 3."""),
+            code_cell("""from openpyxl import load_workbook
+
+workbook_path = DATA_DIR / "tutorial_04_live_alphas.xlsx"
+workbook = load_workbook(workbook_path, data_only=True)
+sheet = workbook["alphas"]
+rows = list(sheet.iter_rows(values_only=True))
+
+headers = rows[0]
+preview = rows[1:3]
+print(headers)
+for row in preview:
+    print(row[:6])"""),
+            markdown_cell("""## 3. Look At The Result Table
+
+After a run, the main file to review is `summary.csv`.
+
+The beginner columns are:
+
+- `row_id`: which Excel row this result came from
+- `status`: complete, failed, timed out, or skipped duplicate
+- `alpha_id`: the BRAIN alpha identifier when available
+- `sharpe`, `fitness`, `returns`, `turnover`, `drawdown`: review metrics
+- `error`: what to inspect when a row did not complete"""),
+            code_cell("""summary_path = EXPECTED_DIR / "tutorial_04_live_offline_summary.csv"
+with summary_path.open(newline="", encoding="utf-8") as f:
+    summary_rows = list(csv.DictReader(f))
+
+simple_columns = ["row_id", "status", "alpha_id", "sharpe", "fitness", "turnover", "error"]
+for row in summary_rows:
+    print({column: row[column] for column in simple_columns})"""),
+            markdown_cell("""## 4. The First Real Commands
+
+When you are ready for live BRAIN, do this from a terminal, not from this beginner notebook:
+
+```bash
+brain-sim login --print-link --credentials-file ~/.brain_credentials
+brain-sim simulate-excel examples/data/tutorial_04_live_alphas.xlsx --sheet alphas --batch-size 4
+```
+
+Live simulation consumes BRAIN quota. Learn the offline tutorials first, then run a very small live batch."""),
+            markdown_cell("""## 5. Where To Go Next
+
+Recommended path for beginners:
+
+1. Tutorial 1 - Installation And Project Tour
+2. Tutorial 3 - Excel Alpha Queue And Payloads
+3. Tutorial 4 - Live Excel Batch Simulation
+4. Tutorial 6 - Duplicate Cache And Re-Runs
+5. Tutorial 7 - Results Raw Logs And Recordsets
+
+Read Tutorial 2 only when you are ready to log in. Read Tutorial 5 after you have seen a timeout or retry queue. Read Tutorial 8 when you want to write custom Python automation."""),
+        ],
+    )
+
+
+def build_tutorial_1() -> None:
+    _write_notebook(
+        TUTORIALS[1],
         [
             markdown_cell("""# Tutorial 1 - Installation And Project Tour
 
@@ -519,7 +617,7 @@ Use `brain-sim login` and `brain-sim simulate-excel` for repeatable operational 
 
 def build_tutorial_2() -> None:
     _write_notebook(
-        TUTORIALS[1],
+        TUTORIALS[2],
         [
             markdown_cell("""# Tutorial 2 - Login And Persona Verification
 
@@ -587,7 +685,7 @@ The second command requires SMTP environment variables. Complete Persona in the 
 
 def build_tutorial_3() -> None:
     _write_notebook(
-        TUTORIALS[2],
+        TUTORIALS[3],
         [
             markdown_cell("""# Tutorial 3 - Excel Alpha Queue And Payloads
 
@@ -628,7 +726,7 @@ except ExcelInputError as exc:
 
 def build_tutorial_4() -> None:
     _write_notebook(
-        TUTORIALS[3],
+        TUTORIALS[4],
         [
             markdown_cell("""# Tutorial 4 - Live Excel Batch Simulation
 
@@ -675,7 +773,7 @@ else:
 
 def build_tutorial_5() -> None:
     _write_notebook(
-        TUTORIALS[4],
+        TUTORIALS[5],
         [
             markdown_cell("""# Tutorial 5 - Batch Fallback, Timeouts, And Retry Queue
 
@@ -731,7 +829,7 @@ Do not blindly resubmit ambiguous transport errors. Inspect `retry_queue.jsonl`,
 
 def build_tutorial_6() -> None:
     _write_notebook(
-        TUTORIALS[5],
+        TUTORIALS[6],
         [
             markdown_cell("""# Tutorial 6 - Duplicate Cache And Re-Runs
 
@@ -770,7 +868,7 @@ Changing expression text or any simulation setting creates a different payload h
 
 def build_tutorial_7() -> None:
     _write_notebook(
-        TUTORIALS[6],
+        TUTORIALS[7],
         [
             markdown_cell("""# Tutorial 7 - Results, Raw Logs, And Recordsets
 
@@ -807,7 +905,7 @@ print(recordset_files)"""),
 
 def build_tutorial_8() -> None:
     _write_notebook(
-        TUTORIALS[7],
+        TUTORIALS[8],
         [
             markdown_cell("""# Tutorial 8 - Python API Workflow
 
@@ -857,6 +955,7 @@ After `brain-sim login`, you can load saved cookies into a `requests.Session`, c
 def build_notebooks() -> None:
     for obsolete in OBSOLETE_NOTEBOOKS:
         (EXAMPLES / obsolete).unlink(missing_ok=True)
+    build_tutorial_0()
     build_tutorial_1()
     build_tutorial_2()
     build_tutorial_3()

@@ -18,7 +18,10 @@ EXPECTED = EXAMPLES / "expected"
 EXAMPLES_README = EXAMPLES / "README.md"
 ROOT_README = ROOT / "README.md"
 
+BEGINNER_NOTEBOOK = "Tutorial 0 - Start Here For Beginners.ipynb"
+
 TUTORIALS = [
+    BEGINNER_NOTEBOOK,
     "Tutorial 1 - Installation And Project Tour.ipynb",
     "Tutorial 2 - Login And Persona Verification.ipynb",
     "Tutorial 3 - Excel Alpha Queue And Payloads.ipynb",
@@ -45,6 +48,8 @@ EXPECTED_FILES = [
     "tutorial_06_second_run_summary.csv",
     "tutorial_07_recordset_summary.csv",
 ]
+
+ADVANCED_TUTORIALS = [tutorial for tutorial in TUTORIALS if tutorial != BEGINNER_NOTEBOOK]
 
 
 def _load_notebook(name: str) -> dict:
@@ -100,14 +105,15 @@ def test_root_readme_points_to_tutorial_suite() -> None:
 
 def test_notebooks_have_required_sections_and_feature_terms() -> None:
     required = {
-        TUTORIALS[0]: ["# Tutorial 1 - Installation And Project Tour", "CLI Help", "Safety Paths"],
-        TUTORIALS[1]: ["# Tutorial 2 - Login And Persona Verification", "Persona Verification Link", "Email Notification", "Cookie Storage"],
-        TUTORIALS[2]: ["# Tutorial 3 - Excel Alpha Queue And Payloads", "Payload Hash", "Invalid Excel Schema"],
-        TUTORIALS[3]: ["# Tutorial 4 - Live Excel Batch Simulation", "Live CLI Commands", "batch-size"],
-        TUTORIALS[4]: ["# Tutorial 5 - Batch Fallback, Timeouts, And Retry Queue", "8-to-4-to-1", "retry_queue.jsonl"],
-        TUTORIALS[5]: ["# Tutorial 6 - Duplicate Cache And Re-Runs", "simulation_cache.sqlite", "skipped_duplicate"],
-        TUTORIALS[6]: ["# Tutorial 7 - Results, Raw Logs, And Recordsets", "recordsets", "raw JSONL"],
-        TUTORIALS[7]: ["# Tutorial 8 - Python API Workflow", "BrainAuth", "BrainClient", "BatchRunner", "RunStore"],
+        BEGINNER_NOTEBOOK: ["# Tutorial 0 - Start Here For Beginners", "The Whole Workflow", "Look At A Sample Excel Queue", "The First Real Commands"],
+        TUTORIALS[1]: ["# Tutorial 1 - Installation And Project Tour", "CLI Help", "Safety Paths"],
+        TUTORIALS[2]: ["# Tutorial 2 - Login And Persona Verification", "Persona Verification Link", "Email Notification", "Cookie Storage"],
+        TUTORIALS[3]: ["# Tutorial 3 - Excel Alpha Queue And Payloads", "Payload Hash", "Invalid Excel Schema"],
+        TUTORIALS[4]: ["# Tutorial 4 - Live Excel Batch Simulation", "Live CLI Commands", "batch-size"],
+        TUTORIALS[5]: ["# Tutorial 5 - Batch Fallback, Timeouts, And Retry Queue", "8-to-4-to-1", "retry_queue.jsonl"],
+        TUTORIALS[6]: ["# Tutorial 6 - Duplicate Cache And Re-Runs", "simulation_cache.sqlite", "skipped_duplicate"],
+        TUTORIALS[7]: ["# Tutorial 7 - Results, Raw Logs, And Recordsets", "recordsets", "raw JSONL"],
+        TUTORIALS[8]: ["# Tutorial 8 - Python API Workflow", "BrainAuth", "BrainClient", "BatchRunner", "RunStore"],
     }
 
     for tutorial, terms in required.items():
@@ -124,13 +130,22 @@ def test_live_notebook_cells_are_gated_and_do_not_hardcode_credentials() -> None
         ".brain_credentials",
     ]
 
-    for tutorial in TUTORIALS:
+    for tutorial in ADVANCED_TUTORIALS:
         code = _code_cell_source(tutorial)
         assert 'RUN_LIVE = os.getenv("BRAIN_SIM_RUN_LIVE") == "1"' in code
         for fragment in forbidden_code_fragments:
             assert fragment not in code
 
-    live_code = _code_cell_source(TUTORIALS[3])
+    beginner_code = _code_cell_source(BEGINNER_NOTEBOOK)
+    assert "RUN_LIVE" not in beginner_code
+    assert "BrainClient" not in beginner_code
+    assert "BatchRunner" not in beginner_code
+    assert "subprocess" not in beginner_code
+    beginner_notebook = _load_notebook(BEGINNER_NOTEBOOK)
+    beginner_code_cells = [cell for cell in beginner_notebook["cells"] if cell.get("cell_type") == "code"]
+    assert len(beginner_code_cells) <= 3
+
+    live_code = _code_cell_source(TUTORIALS[4])
     assert "subprocess.run" in live_code
     assert "if RUN_LIVE:" in live_code
 
