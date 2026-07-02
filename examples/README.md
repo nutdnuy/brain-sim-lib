@@ -18,6 +18,7 @@ Install the project in editable mode:
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -e ".[dev]"
+python -m pip install notebook
 ```
 
 Open the notebook:
@@ -26,7 +27,7 @@ Open the notebook:
 jupyter notebook "examples/Tutorial 1 - Excel Batch Alpha Simulation.ipynb"
 ```
 
-If Jupyter is not installed, read the notebook on GitHub and run the CLI examples from a terminal.
+You can also inspect the notebook on GitHub. Run the live CLI section only after `brain-sim login`, and only when you understand it consumes WorldQuant BRAIN simulation quota.
 
 ## Live BRAIN Runs
 
