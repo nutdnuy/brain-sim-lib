@@ -36,6 +36,14 @@ def test_examples_index_links_tutorial_and_sample_assets() -> None:
     assert "offline" in text.lower()
 
 
+def test_root_readme_points_to_examples() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "## Examples" in text
+    assert "examples/Tutorial 1 - Excel Batch Alpha Simulation.ipynb" in text
+    assert "offline tutorial" in text.lower()
+
+
 def test_tutorial_notebook_has_required_sections_and_dry_run_flag() -> None:
     notebook = _load_notebook()
     source = "\n".join(
