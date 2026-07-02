@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
+import types
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -142,3 +144,28 @@ def test_expected_summary_matches_offline_batch_results() -> None:
         "tutorial-alpha-4",
     ]
     assert all(row["simulation_location"].startswith("/simulations/tutorial-") for row in rows)
+
+
+def test_tutorial_code_cells_execute_offline(tmp_path, monkeypatch) -> None:
+    notebook = _load_notebook()
+    module = types.ModuleType("__tutorial_test__")
+    namespace: dict[str, object] = module.__dict__
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.chdir(ROOT)
+    run_dir = ROOT / "examples" / "runs" / "tutorial_01_offline"
+
+    for index, cell in enumerate(notebook["cells"]):
+        if cell.get("cell_type") != "code":
+            continue
+        source = "".join(cell.get("source", []))
+        compiled = compile(source, f"{NOTEBOOK.name}:cell-{index}", "exec")
+        exec(compiled, namespace)
+        if "RUN_DIR =" in source:
+            namespace["RUN_DIR"] = run_dir
+
+    summary_path = run_dir / "summary.csv"
+    assert summary_path.exists()
+    with summary_path.open(newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 4
+    assert [row["status"] for row in rows] == ["complete", "complete", "complete", "complete"]
