@@ -107,7 +107,18 @@ class BrainAuth:
         if not self.cookie_path.exists():
             return False
         payload = json.loads(self.cookie_path.read_text(encoding="utf-8"))
-        for cookie in payload.get("cookies", []):
+        cookies = payload.get("cookies", [])
+        if isinstance(cookies, dict):
+            for name, value in cookies.items():
+                self.session.cookies.set(
+                    name,
+                    value,
+                    domain=self.cookie_domain,
+                    path="/",
+                    secure=True,
+                )
+            return True
+        for cookie in cookies:
             if cookie.get("domain") != self.cookie_domain:
                 continue
             self.session.cookies.set(

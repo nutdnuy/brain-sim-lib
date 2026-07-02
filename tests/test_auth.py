@@ -185,3 +185,20 @@ def test_load_saved_cookies_reloads_domain_scoped_cookie(tmp_path) -> None:
     assert cookies[0].domain == "api.worldquantbrain.com"
     assert cookies[0].path == "/"
     assert cookies[0].secure is True
+
+
+def test_load_saved_cookies_supports_legacy_cookie_cache(tmp_path) -> None:
+    cookie_path = tmp_path / "cookies.json"
+    cookie_path.write_text(json.dumps({"cookies": {"t": "jwt-value"}}), encoding="utf-8")
+    session = requests.Session()
+
+    auth = BrainAuth(session=session, cookie_path=cookie_path)
+
+    assert auth.load_saved_cookies() is True
+    cookies = list(session.cookies)
+    assert len(cookies) == 1
+    assert cookies[0].name == "t"
+    assert cookies[0].value == "jwt-value"
+    assert cookies[0].domain == "api.worldquantbrain.com"
+    assert cookies[0].path == "/"
+    assert cookies[0].secure is True
