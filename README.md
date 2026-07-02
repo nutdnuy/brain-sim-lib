@@ -95,6 +95,8 @@ Default simulation settings are conservative USA equity settings unless overridd
 
 ## Simulate
 
+Live BRAIN simulations require saved cookies from `brain-sim login` and consume WorldQuant BRAIN simulation quota.
+
 Run automatic batching:
 
 ```bash
