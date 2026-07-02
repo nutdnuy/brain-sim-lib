@@ -1,27 +1,62 @@
 # brain-sim
 
-Professional Python library and CLI for WorldQuant BRAIN alpha simulation.
+Professional Python library and CLI for running WorldQuant BRAIN alpha simulations from Excel.
+
+`brain-sim` focuses on a narrow production workflow: authenticate once, submit alpha expressions in safe batches, avoid duplicate submissions, preserve raw API responses, and export reviewable run artifacts.
+
+> This is an unofficial research tool. It is not affiliated with, endorsed by, or maintained by WorldQuant or WorldQuant BRAIN.
+
+## Features
+
+- BRAIN login with Persona verification link support.
+- Two login modes: print the verification link or email it through SMTP.
+- Excel-driven alpha simulation.
+- Batch policy for `8`, `4`, `1`, or `auto` batch sizing.
+- Automatic fallback from rejected multi-submit payloads to smaller batches.
+- Local duplicate protection through a SQLite simulation cache.
+- Raw submit/poll JSONL logs for auditability.
+- Summary CSV and retry queue outputs for failed, pending, and timed-out simulations.
+- Optional alpha detail and recordset capture.
+- Unit tests use fake HTTP responses and do not call the live BRAIN API.
 
 ## Install
 
 ```bash
-cd /Users/nuthdanai/Desktop/02_Quant_Investment/brain-sim-lib
-/Users/nuthdanai/.local/bin/python3.11 -m venv .venv
+git clone https://github.com/nutdnuy/brain-sim-lib.git
+cd brain-sim-lib
+python -m venv .venv
 . .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
+Check the CLI:
+
+```bash
+brain-sim --version
+brain-sim --help
+```
+
 ## Credentials
 
-Store credentials in `~/.brain_credentials` as:
+Create `~/.brain_credentials`:
 
 ```json
 ["email@example.com", "password"]
 ```
 
-The library reads credentials only for authentication. It stores the resulting cookie jar in `.brain_sim/cookies.json`.
+The credential file is read only during login. Runtime cookies are stored locally in `.brain_sim/cookies.json`, which is ignored by git.
 
-## Login Mode 1: Email The Verification Link
+## Login
+
+Print the Persona verification link:
+
+```bash
+brain-sim login --print-link --credentials-file ~/.brain_credentials
+```
+
+If BRAIN requires Persona verification, open the printed link, complete verification, then run the same login command again to save cookies.
+
+Email the Persona verification link:
 
 ```bash
 export BRAIN_SIM_SMTP_HOST="smtp.example.com"
@@ -33,17 +68,7 @@ export BRAIN_SIM_SMTP_PASSWORD="smtp-password"
 brain-sim login --notify-email "me@example.com" --credentials-file ~/.brain_credentials
 ```
 
-If BRAIN requires Persona verification, the command sends the link to the email address when SMTP is configured and writes `.brain_sim/latest_login_link.json`.
-
-## Login Mode 2: Print The Verification Link
-
-```bash
-brain-sim login --print-link --credentials-file ~/.brain_credentials
-```
-
-If BRAIN requires Persona verification, the command prints the link. Open it in a browser, complete verification, then run login again to save the cookie.
-
-## Excel Simulation
+## Excel Format
 
 Required column:
 
@@ -66,23 +91,44 @@ Optional columns:
 - `language`
 - `visualization`
 
-Run as many as the local batch policy allows:
+Default simulation settings are conservative USA equity settings unless overridden by the Excel row.
+
+## Simulate
+
+Run automatic batching:
 
 ```bash
-brain-sim simulate-excel alphas.xlsx --batch-size auto --recordset pnl --recordset sharpe
+brain-sim simulate-excel alphas.xlsx --batch-size auto
 ```
 
-Run fixed 8-item batches:
+Run fixed 8-item or 4-item batches:
 
 ```bash
 brain-sim simulate-excel alphas.xlsx --batch-size 8
-```
-
-Run fixed 4-item batches:
-
-```bash
 brain-sim simulate-excel alphas.xlsx --batch-size 4
 ```
+
+Fetch extra recordsets after successful simulation:
+
+```bash
+brain-sim simulate-excel alphas.xlsx --recordset pnl --recordset sharpe
+```
+
+Use a longer polling timeout for busy BRAIN queues:
+
+```bash
+brain-sim simulate-excel alphas.xlsx --batch-size 4 --poll-timeout-seconds 1800
+```
+
+## Batch Policy
+
+`auto` tries larger compatible batches first:
+
+1. Submit compatible groups of 8.
+2. If BRAIN explicitly rejects the multi-submit payload, split into 4.
+3. If a 4-item request is explicitly rejected, split into singles.
+
+Transport errors and ambiguous server errors are preserved for review instead of blindly resubmitting, because the server may already have accepted the simulation.
 
 ## Output
 
@@ -97,10 +143,31 @@ Each run folder contains:
 - `summary.csv`
 - `retry_queue.jsonl`
 
-## Test
+`summary.csv` includes the row id, alpha hash, status, alpha id, simulation location, core metrics, check summaries, and error text.
+
+`retry_queue.jsonl` preserves the original payload, row metadata, alpha id when known, and simulation location when BRAIN accepted the request but polling did not complete.
+
+## Development
 
 ```bash
+python -m pip install -e ".[dev]"
 pytest
 ```
 
-Unit tests use fake HTTP responses and never call the live WorldQuant BRAIN API.
+Build a local package:
+
+```bash
+python -m build
+```
+
+## Safety
+
+Do not commit:
+
+- `.brain_sim/`
+- `runs/`
+- `.venv/`
+- `dist/`
+- credential files such as `~/.brain_credentials`
+
+These paths are excluded by `.gitignore`.
