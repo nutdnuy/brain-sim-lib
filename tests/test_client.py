@@ -57,3 +57,21 @@ def test_poll_waits_until_retry_after_disappears(requests_mock) -> None:
     assert result.status == "complete"
     assert result.body["alpha"] == "alpha-1"
     assert len(result.events) == 2
+
+
+def test_poll_returns_timeout_when_retry_sleep_crosses_deadline(requests_mock) -> None:
+    session = requests.Session()
+    requests_mock.get(
+        "https://api.worldquantbrain.com/simulations/sim-1",
+        [
+            {"status_code": 200, "headers": {"Retry-After": "0.02"}, "json": {"progress": 0.2}},
+            {"status_code": 200, "json": {"alpha": "alpha-1", "status": "COMPLETE"}},
+        ],
+    )
+    client = BrainClient(session=session, max_sleep_seconds=0.02)
+
+    result = client.poll("https://api.worldquantbrain.com/simulations/sim-1", timeout_seconds=0.001)
+
+    assert result.status == "pending_timeout"
+    assert result.body == {"progress": 0.2}
+    assert len(result.events) == 1

@@ -90,6 +90,8 @@ class BrainClient:
                 if time.monotonic() >= deadline:
                     return PollResult(status="pending_timeout", body=body, events=events)
                 time.sleep(min(float(retry_after), self.max_sleep_seconds))
+                if time.monotonic() >= deadline:
+                    return PollResult(status="pending_timeout", body=body, events=events)
                 continue
             if not response.ok:
                 return PollResult(status="poll_error", body=body, events=events)
