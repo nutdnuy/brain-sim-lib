@@ -313,6 +313,7 @@ class BatchRunner:
                 "submitted": len(records),
                 "status": SubmitStatus.EXCEPTION.value,
                 "error": f"{type(exc).__name__}: {exc}",
+                "simulation_location": location,
             }
 
         poll_status = self._normalize_poll_status(getattr(poll_result, "status", ""))
@@ -338,6 +339,7 @@ class BatchRunner:
             "poll_body": getattr(poll_result, "body", None),
             "error": self._error_message(getattr(poll_result, "body", None), poll_status),
             "recordsets": list(recordsets),
+            "simulation_location": location,
         }
 
     def _finalize_attempt(
@@ -358,18 +360,42 @@ class BatchRunner:
 
         if status != SubmitStatus.COMPLETE.value:
             for record in records:
-                row = self._summary_row(record, status=status, error=str(attempt.get("error", "")))
+                row = self._summary_row(
+                    record,
+                    status=status,
+                    error=str(attempt.get("error", "")),
+                    simulation_location=str(attempt.get("simulation_location", "")),
+                )
                 summary_rows.append(row)
-                retry_rows.append(self._retry_row(record, status=status, error=row["error"]))
+                retry_rows.append(
+                    self._retry_row(
+                        record,
+                        status=status,
+                        error=row["error"],
+                        simulation_location=row["simulation_location"],
+                    )
+                )
             return int(attempt.get("submitted", 0) or 0)
 
         alpha_ids = extract_alpha_ids(attempt.get("poll_body"))
         if len(alpha_ids) != len(records):
             error = f"expected {len(records)} alpha id(s), got {len(alpha_ids)}"
             for record in records:
-                row = self._summary_row(record, status=SubmitStatus.POLL_ERROR.value, error=error)
+                row = self._summary_row(
+                    record,
+                    status=SubmitStatus.POLL_ERROR.value,
+                    error=error,
+                    simulation_location=str(attempt.get("simulation_location", "")),
+                )
                 summary_rows.append(row)
-                retry_rows.append(self._retry_row(record, status=SubmitStatus.POLL_ERROR.value, error=error))
+                retry_rows.append(
+                    self._retry_row(
+                        record,
+                        status=SubmitStatus.POLL_ERROR.value,
+                        error=error,
+                        simulation_location=row["simulation_location"],
+                    )
+                )
             return int(attempt.get("submitted", 0) or 0)
 
         for record, alpha_id in zip(records, alpha_ids):
@@ -381,7 +407,13 @@ class BatchRunner:
             except Exception as exc:  # noqa: BLE001
                 artifact_errors.append(f"fetch_alpha {type(exc).__name__}: {exc}")
                 retry_rows.append(
-                    self._retry_row(record, status=SubmitStatus.EXCEPTION.value, alpha_id=alpha_id, error=artifact_errors[-1])
+                    self._retry_row(
+                        record,
+                        status=SubmitStatus.EXCEPTION.value,
+                        alpha_id=alpha_id,
+                        error=artifact_errors[-1],
+                        simulation_location=str(attempt.get("simulation_location", "")),
+                    )
                 )
 
             for recordset_name in attempt.get("recordsets", []):
@@ -396,6 +428,7 @@ class BatchRunner:
                             status=SubmitStatus.EXCEPTION.value,
                             alpha_id=alpha_id,
                             error=artifact_errors[-1],
+                            simulation_location=str(attempt.get("simulation_location", "")),
                         )
                     )
 
@@ -412,6 +445,7 @@ class BatchRunner:
                     alpha_id=alpha_id,
                     alpha_body=alpha_body if isinstance(alpha_body, dict) else None,
                     error="; ".join(artifact_errors),
+                    simulation_location=str(attempt.get("simulation_location", "")),
                 )
             )
 
@@ -471,6 +505,7 @@ class BatchRunner:
         alpha_id: str = "",
         alpha_body: dict[str, Any] | None = None,
         error: str = "",
+        simulation_location: str = "",
     ) -> dict[str, Any]:
         metrics = summarize_alpha(alpha_body)
         return {
@@ -479,6 +514,7 @@ class BatchRunner:
             **metrics,
             "status": status,
             "alpha_id": alpha_id or metrics.get("alpha_id", ""),
+            "simulation_location": simulation_location,
             "error": error,
         }
 
@@ -489,11 +525,13 @@ class BatchRunner:
         status: str,
         error: str,
         alpha_id: str = "",
+        simulation_location: str = "",
     ) -> dict[str, Any]:
         return {
             "row_id": record.row_id,
             "alpha_hash": record.alpha_hash,
             "alpha_id": alpha_id,
+            "simulation_location": simulation_location,
             "status": status,
             "error": error,
             "payload": record.payload,

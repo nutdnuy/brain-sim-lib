@@ -16,6 +16,7 @@ SUMMARY_FIELDS = [
     "alpha_hash",
     "status",
     "alpha_id",
+    "simulation_location",
     "sharpe",
     "fitness",
     "returns",

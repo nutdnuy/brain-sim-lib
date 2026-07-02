@@ -131,6 +131,7 @@ def test_write_manifest_and_summary_appends_with_stable_headers(tmp_path) -> Non
         "alpha_hash",
         "status",
         "alpha_id",
+        "simulation_location",
         "sharpe",
         "fitness",
         "returns",

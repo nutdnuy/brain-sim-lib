@@ -362,6 +362,12 @@ def test_poll_error_pending_timeout_and_submit_error_go_to_retry_queue(tmp_path)
         SubmitStatus.PENDING_TIMEOUT.value,
         SubmitStatus.SUBMIT_ERROR.value,
     ]
+    assert retry_rows[0]["simulation_location"] == "/simulations/1"
+    assert retry_rows[1]["simulation_location"] == "/simulations/2"
+    assert retry_rows[2]["simulation_location"] == ""
+
+    summary_rows = read_summary(tmp_path / "run")
+    assert summary_rows[1]["simulation_location"] == "/simulations/2"
 
 
 def test_client_exceptions_do_not_crash_whole_run_and_write_retry(tmp_path) -> None:
