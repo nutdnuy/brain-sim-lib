@@ -4,7 +4,7 @@ import csv
 import json
 from pathlib import Path
 
-from brain_sim.batch import BatchRunner, chunk_records, extract_alpha_ids
+from brain_sim.batch import BatchRunner, chunk_records, extract_alpha_ids, iter_allowed_batch_chunks
 from brain_sim.client import PollResult, SubmitResult
 from brain_sim.models import PayloadRecord, RateLimitState, SubmitStatus
 
@@ -67,6 +67,14 @@ class FakeClient:
                 status_code=400,
                 location="",
                 body={"message": "multi submit rejected"},
+                headers={},
+                rate_limit=RateLimitState(None, None, None),
+            )
+        if action == "server_error":
+            return SubmitResult(
+                status_code=500,
+                location="",
+                body={"message": "unknown server state"},
                 headers={},
                 rate_limit=RateLimitState(None, None, None),
             )
@@ -159,6 +167,14 @@ def test_chunk_records_chunks_and_rejects_invalid_size() -> None:
             raise AssertionError("invalid chunk size was accepted")
 
 
+def test_iter_allowed_batch_chunks_uses_only_8_4_and_1() -> None:
+    records = [record(str(index)) for index in range(10)]
+
+    assert [len(chunk) for chunk in iter_allowed_batch_chunks(records, 8)] == [8, 1, 1]
+    assert [len(chunk) for chunk in iter_allowed_batch_chunks(records[:5], 8)] == [4, 1]
+    assert [len(chunk) for chunk in iter_allowed_batch_chunks(records[:6], 4)] == [4, 1, 1]
+
+
 def test_auto_fallback_splits_8_to_4_then_singles_on_submit_reject(tmp_path) -> None:
     records = [record(str(index)) for index in range(8)]
     client = FakeClient(submit_actions=["reject", "reject", "accept", "accept", "accept", "accept", "accept"])
@@ -179,6 +195,17 @@ def test_auto_fallback_splits_8_to_4_then_singles_on_submit_reject(tmp_path) -> 
     assert result["completed"] == 8
 
 
+def test_auto_leftover_records_use_4_and_single_not_unsupported_size_5(tmp_path) -> None:
+    records = [record(str(index)) for index in range(5)]
+    client = FakeClient()
+    runner = BatchRunner(client, tmp_path / "run")
+
+    result = runner.run(records, batch_size="auto", poll_timeout_seconds=1)
+
+    assert [len(payload) if isinstance(payload, list) else 1 for payload in client.submissions] == [4, 1]
+    assert result["completed"] == 5
+
+
 def test_fixed_4_falls_back_to_singles_on_submit_reject(tmp_path) -> None:
     records = [record(str(index)) for index in range(4)]
     client = FakeClient(submit_actions=["reject", "accept", "accept", "accept", "accept"])
@@ -194,6 +221,55 @@ def test_fixed_4_falls_back_to_singles_on_submit_reject(tmp_path) -> None:
         1,
     ]
     assert result["completed"] == 4
+
+
+def test_fixed_8_falls_back_to_4_then_singles_on_submit_reject(tmp_path) -> None:
+    records = [record(str(index)) for index in range(8)]
+    client = FakeClient(submit_actions=["reject", "reject", "accept", "accept", "accept", "accept", "accept"])
+    runner = BatchRunner(client, tmp_path / "run")
+
+    result = runner.run(records, batch_size=8, poll_timeout_seconds=1)
+
+    assert [len(payload) if isinstance(payload, list) else 1 for payload in client.submissions] == [
+        8,
+        4,
+        1,
+        1,
+        1,
+        1,
+        4,
+    ]
+    assert result["completed"] == 8
+
+
+def test_submit_exception_does_not_fallback_and_duplicate_hash_is_not_resubmitted(tmp_path) -> None:
+    records = [record("first", alpha_hash="same-hash"), record("second", alpha_hash="same-hash")]
+    client = FakeClient(submit_actions=[RuntimeError("unknown submit state")])
+    runner = BatchRunner(client, tmp_path / "run")
+
+    result = runner.run(records, batch_size=1, poll_timeout_seconds=1)
+
+    assert len(client.submissions) == 1
+    assert result["submitted"] == 0
+    assert result["failed"] == 2
+    rows = read_summary(tmp_path / "run")
+    assert [row["status"] for row in rows] == [
+        SubmitStatus.EXCEPTION.value,
+        SubmitStatus.SUBMIT_ERROR.value,
+    ]
+    assert "already attempted" in rows[1]["error"]
+
+
+def test_ambiguous_server_error_does_not_fallback_to_smaller_batches(tmp_path) -> None:
+    records = [record(str(index)) for index in range(4)]
+    client = FakeClient(submit_actions=["server_error"])
+    runner = BatchRunner(client, tmp_path / "run")
+
+    result = runner.run(records, batch_size=4, poll_timeout_seconds=1)
+
+    assert [len(payload) if isinstance(payload, list) else 1 for payload in client.submissions] == [4]
+    assert result["submitted"] == 0
+    assert result["failed"] == 4
 
 
 def test_duplicates_are_skipped_without_client_submit(tmp_path) -> None:
@@ -254,6 +330,7 @@ def test_complete_flow_writes_artifacts_recordsets_summary_and_cache(tmp_path) -
         "skipped_duplicates": 0,
         "completed": 1,
         "failed": 0,
+        "retry_queued": 0,
         "run_dir": str(tmp_path / "run"),
     }
     rows = read_summary(tmp_path / "run")
@@ -310,6 +387,8 @@ def test_fetch_alpha_exception_is_preserved_in_retry_without_losing_completion(t
     result = runner.run(records, batch_size=1, poll_timeout_seconds=1)
 
     assert result["completed"] == 1
+    assert result["failed"] == 1
+    assert result["retry_queued"] == 1
     rows = read_summary(tmp_path / "run")
     assert rows[0]["status"] == SubmitStatus.COMPLETE.value
     assert "detail unavailable" in rows[0]["error"]

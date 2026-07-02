@@ -34,6 +34,29 @@ def chunk_records(records: Iterable[PayloadRecord], size: int) -> Iterator[list[
         yield chunk
 
 
+def iter_allowed_batch_chunks(records: Iterable[PayloadRecord], max_size: int) -> Iterator[list[PayloadRecord]]:
+    if max_size not in {1, 4, 8}:
+        raise ValueError("max_size must be 1, 4, or 8")
+
+    remaining = list(records)
+    if max_size == 1:
+        for record in remaining:
+            yield [record]
+        return
+
+    if max_size == 8:
+        while len(remaining) >= 8:
+            yield remaining[:8]
+            remaining = remaining[8:]
+
+    while len(remaining) >= 4 and max_size >= 4:
+        yield remaining[:4]
+        remaining = remaining[4:]
+
+    for record in remaining:
+        yield [record]
+
+
 class BatchRunner:
     def __init__(self, client: Any, run_dir: str | Path, cache_path: str | Path | None = None) -> None:
         self.client = client
@@ -56,6 +79,7 @@ class BatchRunner:
         summary_rows: list[dict[str, Any]] = []
         retry_rows: list[dict[str, Any]] = []
         submitted_count = 0
+        attempted_hashes: set[str] = set()
 
         records_to_submit: list[PayloadRecord] = []
         for record in requested_records:
@@ -73,8 +97,8 @@ class BatchRunner:
 
         for compatible_run in self._compatible_runs(records_to_submit):
             if batch_size == "auto":
-                for chunk in chunk_records(compatible_run, 8):
-                    chunk = self._skip_cached(chunk, summary_rows)
+                for chunk in iter_allowed_batch_chunks(compatible_run, 8):
+                    chunk = self._skip_cached(chunk, summary_rows, retry_rows, attempted_hashes)
                     if not chunk:
                         continue
                     submitted_count += self._process_auto_chunk(
@@ -83,10 +107,11 @@ class BatchRunner:
                         recordsets=requested_recordsets,
                         summary_rows=summary_rows,
                         retry_rows=retry_rows,
+                        attempted_hashes=attempted_hashes,
                     )
             elif batch_size == 1:
                 for record in compatible_run:
-                    pending = self._skip_cached([record], summary_rows)
+                    pending = self._skip_cached([record], summary_rows, retry_rows, attempted_hashes)
                     if not pending:
                         continue
                     submitted_count += self._process_terminal_attempt(
@@ -95,29 +120,21 @@ class BatchRunner:
                         recordsets=requested_recordsets,
                         summary_rows=summary_rows,
                         retry_rows=retry_rows,
+                        attempted_hashes=attempted_hashes,
                     )
             else:
-                for chunk in chunk_records(compatible_run, batch_size):
-                    chunk = self._skip_cached(chunk, summary_rows)
+                for chunk in iter_allowed_batch_chunks(compatible_run, batch_size):
+                    chunk = self._skip_cached(chunk, summary_rows, retry_rows, attempted_hashes)
                     if not chunk:
                         continue
-                    attempt = self._attempt_submission(chunk, poll_timeout_seconds, requested_recordsets)
-                    if attempt["submission_failed"] and len(chunk) > 1:
-                        for record in chunk:
-                            submitted_count += self._process_terminal_attempt(
-                                [record],
-                                poll_timeout_seconds=poll_timeout_seconds,
-                                recordsets=requested_recordsets,
-                                summary_rows=summary_rows,
-                                retry_rows=retry_rows,
-                            )
-                    else:
-                        submitted_count += self._finalize_attempt(
-                            chunk,
-                            attempt,
-                            summary_rows=summary_rows,
-                            retry_rows=retry_rows,
-                        )
+                    submitted_count += self._process_auto_chunk(
+                        chunk,
+                        poll_timeout_seconds=poll_timeout_seconds,
+                        recordsets=requested_recordsets,
+                        summary_rows=summary_rows,
+                        retry_rows=retry_rows,
+                        attempted_hashes=attempted_hashes,
+                    )
 
         self.store.write_summary(summary_rows)
         self.store.write_retry_queue(retry_rows)
@@ -126,13 +143,14 @@ class BatchRunner:
         skipped = sum(
             1 for row in summary_rows if row.get("status") == SubmitStatus.SKIPPED_DUPLICATE.value
         )
-        failed = sum(1 for row in summary_rows if row.get("status") in _RETRY_STATUSES)
+        failed = len(retry_rows)
         return {
             "requested": len(requested_records),
             "submitted": submitted_count,
             "skipped_duplicates": skipped,
             "completed": completed,
             "failed": failed,
+            "retry_queued": len(retry_rows),
             "run_dir": str(self.store.run_dir),
         }
 
@@ -144,6 +162,7 @@ class BatchRunner:
         recordsets: Sequence[str],
         summary_rows: list[dict[str, Any]],
         retry_rows: list[dict[str, Any]],
+        attempted_hashes: set[str],
     ) -> int:
         if len(records) == 1:
             return self._process_terminal_attempt(
@@ -152,11 +171,26 @@ class BatchRunner:
                 recordsets=recordsets,
                 summary_rows=summary_rows,
                 retry_rows=retry_rows,
+                attempted_hashes=attempted_hashes,
             )
 
         attempt = self._attempt_submission(records, poll_timeout_seconds, recordsets)
         if not attempt["submission_failed"]:
-            return self._finalize_attempt(records, attempt, summary_rows=summary_rows, retry_rows=retry_rows)
+            return self._finalize_attempt(
+                records,
+                attempt,
+                summary_rows=summary_rows,
+                retry_rows=retry_rows,
+                attempted_hashes=attempted_hashes,
+            )
+        if not attempt.get("fallback_allowed", False):
+            return self._finalize_attempt(
+                records,
+                attempt,
+                summary_rows=summary_rows,
+                retry_rows=retry_rows,
+                attempted_hashes=attempted_hashes,
+            )
 
         submitted = 0
         if len(records) <= 4:
@@ -167,15 +201,20 @@ class BatchRunner:
                     recordsets=recordsets,
                     summary_rows=summary_rows,
                     retry_rows=retry_rows,
+                    attempted_hashes=attempted_hashes,
                 )
             return submitted
 
-        for chunk in chunk_records(records, 4):
-            chunk = self._skip_cached(chunk, summary_rows)
+        for chunk in iter_allowed_batch_chunks(records, 4):
+            chunk = self._skip_cached(chunk, summary_rows, retry_rows, attempted_hashes)
             if not chunk:
                 continue
             four_attempt = self._attempt_submission(chunk, poll_timeout_seconds, recordsets)
-            if four_attempt["submission_failed"] and len(chunk) > 1:
+            if (
+                four_attempt["submission_failed"]
+                and four_attempt.get("fallback_allowed", False)
+                and len(chunk) > 1
+            ):
                 for record in chunk:
                     submitted += self._process_terminal_attempt(
                         [record],
@@ -183,6 +222,7 @@ class BatchRunner:
                         recordsets=recordsets,
                         summary_rows=summary_rows,
                         retry_rows=retry_rows,
+                        attempted_hashes=attempted_hashes,
                     )
             else:
                 submitted += self._finalize_attempt(
@@ -190,6 +230,7 @@ class BatchRunner:
                     four_attempt,
                     summary_rows=summary_rows,
                     retry_rows=retry_rows,
+                    attempted_hashes=attempted_hashes,
                 )
         return submitted
 
@@ -201,12 +242,19 @@ class BatchRunner:
         recordsets: Sequence[str],
         summary_rows: list[dict[str, Any]],
         retry_rows: list[dict[str, Any]],
+        attempted_hashes: set[str],
     ) -> int:
-        records = self._skip_cached(records, summary_rows)
+        records = self._skip_cached(records, summary_rows, retry_rows, attempted_hashes)
         if not records:
             return 0
         attempt = self._attempt_submission(records, poll_timeout_seconds, recordsets)
-        return self._finalize_attempt(records, attempt, summary_rows=summary_rows, retry_rows=retry_rows)
+        return self._finalize_attempt(
+            records,
+            attempt,
+            summary_rows=summary_rows,
+            retry_rows=retry_rows,
+            attempted_hashes=attempted_hashes,
+        )
 
     def _attempt_submission(
         self,
@@ -229,6 +277,7 @@ class BatchRunner:
             )
             return {
                 "submission_failed": True,
+                "fallback_allowed": False,
                 "status": SubmitStatus.EXCEPTION.value,
                 "error": f"{type(exc).__name__}: {exc}",
             }
@@ -243,6 +292,7 @@ class BatchRunner:
         if submit_status != SubmitStatus.SUBMITTED.value:
             return {
                 "submission_failed": True,
+                "fallback_allowed": self._fallback_allowed(submit_result),
                 "status": submit_status,
                 "error": self._error_message(getattr(submit_result, "body", None), "submit failed"),
                 "submit_result": submit_result,
@@ -297,7 +347,11 @@ class BatchRunner:
         *,
         summary_rows: list[dict[str, Any]],
         retry_rows: list[dict[str, Any]],
+        attempted_hashes: set[str],
     ) -> int:
+        for record in records:
+            attempted_hashes.add(record.alpha_hash)
+
         status = str(attempt.get("status", SubmitStatus.EXCEPTION.value))
         if status == SubmitStatus.SUBMITTED.value:
             status = SubmitStatus.POLL_ERROR.value
@@ -383,11 +437,21 @@ class BatchRunner:
         self,
         records: list[PayloadRecord],
         summary_rows: list[dict[str, Any]],
+        retry_rows: list[dict[str, Any]],
+        attempted_hashes: set[str],
     ) -> list[PayloadRecord]:
         pending: list[PayloadRecord] = []
         for record in records:
             cached = self.cache.lookup(record.alpha_hash)
             if cached is None:
+                if record.alpha_hash in attempted_hashes:
+                    error = "duplicate payload already attempted in this run"
+                    row = self._summary_row(record, status=SubmitStatus.SUBMIT_ERROR.value, error=error)
+                    summary_rows.append(row)
+                    retry_rows.append(
+                        self._retry_row(record, status=SubmitStatus.SUBMIT_ERROR.value, error=error)
+                    )
+                    continue
                 pending.append(record)
                 continue
             summary_rows.append(
@@ -444,6 +508,10 @@ class BatchRunner:
         if not location:
             return SubmitStatus.SUBMIT_ERROR.value
         return SubmitStatus.SUBMITTED.value
+
+    def _fallback_allowed(self, submit_result: Any) -> bool:
+        status_code = getattr(submit_result, "status_code", None)
+        return isinstance(status_code, int) and status_code in {400, 413, 422}
 
     def _normalize_poll_status(self, status: Any) -> str:
         normalized = str(status or "").lower()
