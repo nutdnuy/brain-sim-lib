@@ -49,6 +49,11 @@ def test_parse_retry_after_returns_none_for_invalid_value() -> None:
     assert parse_retry_after("not-a-date") is None
 
 
+def test_parse_retry_after_returns_none_for_non_finite_numeric_values() -> None:
+    assert parse_retry_after("NaN") is None
+    assert parse_retry_after("Infinity") is None
+
+
 def test_submit_simulation_returns_location_and_headers(requests_mock) -> None:
     session = requests.Session()
     requests_mock.post(
@@ -316,6 +321,26 @@ def test_poll_treats_invalid_retry_after_as_no_retry_delay(requests_mock) -> Non
     assert result.status == "complete"
     assert result.body["alpha"] == "alpha-1"
     assert len(result.events) == 1
+
+
+def test_poll_non_finite_retry_after_uses_minimum_interval(requests_mock, monkeypatch) -> None:
+    sleep_values: list[float] = []
+    monkeypatch.setattr(client_module.time, "sleep", sleep_values.append)
+    session = requests.Session()
+    requests_mock.get(
+        "https://api.worldquantbrain.com/simulations/sim-1",
+        [
+            {"status_code": 200, "headers": {"Retry-After": "NaN"}, "json": {"progress": 0.2}},
+            {"status_code": 200, "json": {"alpha": "alpha-1", "status": "COMPLETE"}},
+        ],
+    )
+    client = BrainClient(session=session, min_poll_interval_seconds=0.25)
+
+    result = client.poll("https://api.worldquantbrain.com/simulations/sim-1", timeout_seconds=2)
+
+    assert result.status == "complete"
+    assert sleep_values == [0.25]
+    assert len(result.events) == 2
 
 
 def test_poll_normalizes_relative_location_input(requests_mock) -> None:

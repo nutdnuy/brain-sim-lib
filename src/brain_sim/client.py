@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
@@ -51,7 +52,10 @@ def parse_retry_after(value: str | None, *, now: datetime | None = None) -> floa
     if value in (None, ""):
         return None
     try:
-        return float(value)
+        seconds = float(value)
+        if math.isfinite(seconds):
+            return seconds
+        return None
     except ValueError:
         pass
 
