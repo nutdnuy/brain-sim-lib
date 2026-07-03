@@ -94,6 +94,20 @@ RECORDSET_ROWS = [
     ("recordset-002", "rank(ts_mean(returns, 5))", "momentum"),
 ]
 
+SETTINGS_ROWS = [
+    ("settings-001", "rank(ts_mean(volume, 20))", "liquidity", "USA", "TOP3000", 1, 15, "SUBINDUSTRY", 0.08, "OFF"),
+    ("settings-002", "rank(ts_mean(volume, 20))", "liquidity", "USA", "TOP1000", 1, 10, "INDUSTRY", 0.06, "OFF"),
+    ("settings-003", "rank(ts_mean(returns, 5))", "momentum", "USA", "TOP3000", 1, 5, "SECTOR", 0.08, "OFF"),
+    ("settings-004", "rank(ts_backfill(fundamental_field, 60))", "fundamental", "USA", "TOP3000", 1, 30, "INDUSTRY", 0.04, "ON"),
+]
+
+DATAFIELD_ROWS = [
+    ("field-001", "rank(ts_mean(volume, 20))", "matrix-field"),
+    ("field-002", "rank(vec_avg(news_sentiment_vector))", "vector-field"),
+    ("field-003", "group_rank(rank(ts_mean(volume, 20)), industry)", "group-field"),
+    ("field-004", "rank(ts_backfill(fundamental_field, 60))", "sparse-field"),
+]
+
 TUTORIALS = [
     "Tutorial 0 - Start Here For Beginners.ipynb",
     "Tutorial 1 - Installation And Project Tour.ipynb",
@@ -104,6 +118,8 @@ TUTORIALS = [
     "Tutorial 6 - Duplicate Cache And Re-Runs.ipynb",
     "Tutorial 7 - Results Raw Logs And Recordsets.ipynb",
     "Tutorial 8 - Python API Workflow.ipynb",
+    "Tutorial 9 - Simulation Settings Deep Dive.ipynb",
+    "Tutorial 10 - Data Fields And Field Types.ipynb",
 ]
 
 OBSOLETE_NOTEBOOKS = [
@@ -187,6 +203,35 @@ def _write_workbook(path: Path, rows: Iterable[tuple[str, str, str]], *, invalid
     _normalize_xlsx_zip(path)
 
 
+def _write_settings_workbook(path: Path) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    workbook.properties.created = FIXED_WORKBOOK_DATETIME
+    workbook.properties.modified = FIXED_WORKBOOK_DATETIME
+    sheet = workbook.active
+    sheet.title = "alphas"
+    sheet.append(STANDARD_HEADERS)
+    for row_id, expression, theme, region, universe, delay, decay, neutralization, truncation, nan_handling in SETTINGS_ROWS:
+        sheet.append(
+            [
+                row_id,
+                expression,
+                region,
+                universe,
+                delay,
+                decay,
+                neutralization,
+                truncation,
+                nan_handling,
+                "FASTEXPR",
+                False,
+                theme,
+            ]
+        )
+    workbook.save(path)
+    _normalize_xlsx_zip(path)
+
+
 def build_workbooks() -> None:
     _write_workbook(DATA_DIR / "tutorial_03_mixed_settings.xlsx", ALPHA_ROWS)
     _write_workbook(DATA_DIR / "tutorial_03_invalid_missing_expression.xlsx", ALPHA_ROWS[:1], invalid=True)
@@ -195,6 +240,8 @@ def build_workbooks() -> None:
     _write_workbook(DATA_DIR / "tutorial_06_duplicate_alphas.xlsx", DUPLICATE_ROWS)
     _write_workbook(DATA_DIR / "tutorial_07_recordset_alphas.xlsx", RECORDSET_ROWS)
     _write_workbook(DATA_DIR / "tutorial_08_api_alphas.xlsx", ALPHA_ROWS[:3])
+    _write_settings_workbook(DATA_DIR / "tutorial_09_settings_examples.xlsx")
+    _write_workbook(DATA_DIR / "tutorial_10_datafield_examples.xlsx", DATAFIELD_ROWS)
     legacy_path = DATA_DIR / "tutorial_01_alphas.xlsx"
     if legacy_path.exists():
         legacy_path.unlink()
@@ -952,6 +999,180 @@ After `brain-sim login`, you can load saved cookies into a `requests.Session`, c
     )
 
 
+def build_tutorial_9() -> None:
+    _write_notebook(
+        TUTORIALS[9],
+        [
+            markdown_cell("""# Tutorial 9 - Simulation Settings Deep Dive
+
+This tutorial explains every major BRAIN simulation setting from the platform UI and shows how the same values appear in `brain-sim` payloads.
+
+It is offline-safe. The cells inspect sample workbooks and payload dictionaries only. They do not submit simulations unless you write your own live command later."""),
+            code_cell(COMMON_SETUP),
+            markdown_cell("""## 1. Start From The Screenshot Labels
+
+The BRAIN settings panel uses user-facing labels such as Language, Instrument Type, Region, Delay, Universe, Neutralization, Decay, Truncation, Pasteurization, Unit Handling, NaN Handling, Test Period, Max Trade, Max Position, and Visualization.
+
+`brain-sim` uses the API field names from `SimulationSettings`. Most labels map directly. Max Position is documented as UI-only in this package until the exact API field name is confirmed from live payloads or official docs."""),
+            code_cell("""from brain_sim.models import SimulationSettings
+
+settings = SimulationSettings()
+for key, value in settings.to_api_dict().items():
+    print(f"{key:16} {value!r}")"""),
+            markdown_cell("""## 2. UI Labels To API Fields
+
+Keep this mapping near your Excel template. It prevents accidental column names such as `instrument type` or `nan handling`, which the library will treat as metadata instead of simulation settings."""),
+            code_cell("""ui_mapping = [
+    ("Language", "language"),
+    ("Instrument Type", "instrumentType"),
+    ("Region", "region"),
+    ("Delay", "delay"),
+    ("Universe", "universe"),
+    ("Neutralization", "neutralization"),
+    ("Decay", "decay"),
+    ("Truncation", "truncation"),
+    ("Pasteurization", "pasteurization"),
+    ("Unit Handling", "unitHandling"),
+    ("NaN Handling", "nanHandling"),
+    ("Test Period", "testPeriod"),
+    ("Max Trade", "maxTrade"),
+    ("Max Position", "UI-only until API field is confirmed"),
+    ("Visualization", "visualization"),
+]
+for label, field in ui_mapping:
+    print(f"{label:18} -> {field}")"""),
+            markdown_cell("""## 3. Read A Settings Workbook
+
+The sample workbook changes one or two settings at a time so you can see how settings become payloads. The required column is still `expression`; optional setting columns override `SimulationSettings`."""),
+            code_cell(_records_code("tutorial_09_settings_examples.xlsx", "settings-hash")),
+            markdown_cell("""## 4. Compare Payload Settings
+
+Changing Region, Universe, Delay, Decay, Neutralization, Truncation, Pasteurization, NaN Handling, Max Trade, Unit Handling, Test Period, Language, or Visualization changes the experiment and the duplicate hash."""),
+            code_cell("""for record in payload_records:
+    settings = record.payload["settings"]
+    print(
+        record.row_id,
+        {
+            "universe": settings["universe"],
+            "delay": settings["delay"],
+            "decay": settings["decay"],
+            "neutralization": settings["neutralization"],
+            "truncation": settings["truncation"],
+            "nanHandling": settings["nanHandling"],
+        },
+    )"""),
+            markdown_cell("""## 5. Beginner Rules For Each Setting
+
+- `language`: use `FASTEXPR` for BRAIN formulas.
+- `instrumentType`: keep `EQUITY` unless the API and account support another instrument type.
+- `region`: changes field availability, calendar, and market context.
+- `universe`: changes breadth, liquidity, coverage, and sub-universe checks.
+- `delay`: use Delay 1 until same-day timing is justified.
+- `neutralization`: part of the Alpha definition, not a cosmetic setting.
+- `decay`: smooths target weights; useful for turnover, dangerous if it dilutes a fast signal.
+- `truncation`: controls extreme weights; it does not fix a narrow signal.
+- `pasteurization`: keep `ON` while learning.
+- `unitHandling`: keep `VERIFY` and treat warnings as feedback.
+- `nanHandling`: understand missingness before turning it on.
+- `testPeriod`: helpful in-sample split, not proof of future robustness.
+- `maxTrade`: investability control passed through as `maxTrade`.
+- Max Position: UI-visible but not exposed by this package until API naming is confirmed.
+- `visualization`: leave `False` for normal batch work."""),
+            markdown_cell("""## 6. Offline Practice Checklist
+
+Before running live:
+
+1. Pick one baseline setting bundle.
+2. Change one axis at a time.
+3. Write the exact setting values into the run notes.
+4. Use duplicate cache so identical payloads are skipped.
+5. Compare results only when settings are comparable enough for the comparison to mean something."""),
+        ],
+    )
+
+
+def build_tutorial_10() -> None:
+    _write_notebook(
+        TUTORIALS[10],
+        [
+            markdown_cell("""# Tutorial 10 - Data Fields And Field Types
+
+This tutorial teaches how to think about BRAIN data fields before writing large Alpha batches.
+
+It is offline-safe and uses example expressions only. It does not require access to live Data Explorer."""),
+            code_cell(COMMON_SETUP),
+            markdown_cell("""## 1. The Data Explorer Checklist
+
+Before using a field, inspect it in Data Explorer:
+
+- field type
+- coverage
+- date coverage
+- cadence
+- region
+- delay
+- description
+- units
+- Alpha Count and User Count
+
+The goal is to understand the field before choosing operators."""),
+            markdown_cell("""## 2. Matrix, Vector, And Group Fields
+
+A Matrix data field has one value per instrument-date. A Vector data field has multiple values per instrument-date and should be reduced with operators such as `vec_avg`. A Group data field is a label used by group operators such as `group_rank`.
+
+Sparse fields often need careful missing-data handling or operators such as `ts_backfill`."""),
+            code_cell(_records_code("tutorial_10_datafield_examples.xlsx", "field-hash")),
+            markdown_cell("""## 3. Classify The Example Expressions
+
+This is a lightweight static exercise. The library does not validate live field metadata offline, so the notebook teaches the reasoning pattern instead."""),
+            code_cell("""field_notes = {
+    "field-001": {
+        "field_type": "Matrix data field",
+        "check": "coverage, cadence, region, delay",
+        "operator_rule": "matrix fields can use rank and ts_mean directly",
+    },
+    "field-002": {
+        "field_type": "Vector data field",
+        "check": "confirm vector semantics in Data Explorer",
+        "operator_rule": "reduce first with vec_avg, vec_sum, or vec_count",
+    },
+    "field-003": {
+        "field_type": "Group data field",
+        "check": "group size and peer meaning",
+        "operator_rule": "use as the group argument in group_rank or group_neutralize",
+    },
+    "field-004": {
+        "field_type": "Sparse matrix field",
+        "check": "coverage, date coverage, and missingness",
+        "operator_rule": "consider ts_backfill only when the data cadence supports it",
+    },
+}
+
+for record in payload_records:
+    note = field_notes[record.row_id]
+    print(record.row_id, note["field_type"], "->", note["operator_rule"])"""),
+            markdown_cell("""## 4. Payload Review
+
+The API payload cannot tell you whether a field is truly matrix, vector, or group typed. That metadata comes from Data Explorer. The payload review still confirms that your expression, region, universe, delay, and settings are the ones you intended to simulate."""),
+            code_cell("""for record in payload_records:
+    print(record.row_id)
+    print("  expression:", record.payload["regular"])
+    print("  region:", record.payload["settings"]["region"])
+    print("  delay:", record.payload["settings"]["delay"])
+    print("  hash:", record.alpha_hash)"""),
+            markdown_cell("""## 5. Beginner Field Rules
+
+- Use Data Explorer before expression generation.
+- For a Vector data field, reduce with `vec_avg`, `vec_sum`, `vec_count`, or another vector operator before normal ranking.
+- For a Group data field, use it as a group label, not as a numeric signal.
+- For sparse fields, inspect coverage before using `ts_backfill`.
+- Match time-series windows to cadence.
+- Prefer one field from a family first, then expand after a signal appears.
+- Keep settings stable while testing field/operator changes."""),
+        ],
+    )
+
+
 def build_notebooks() -> None:
     for obsolete in OBSOLETE_NOTEBOOKS:
         (EXAMPLES / obsolete).unlink(missing_ok=True)
@@ -964,6 +1185,8 @@ def build_notebooks() -> None:
     build_tutorial_6()
     build_tutorial_7()
     build_tutorial_8()
+    build_tutorial_9()
+    build_tutorial_10()
 
 
 def main() -> None:
