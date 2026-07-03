@@ -127,6 +127,7 @@ brain-sim simulate-excel alphas.xlsx --batch-size 4 --poll-timeout-seconds 1800
 New to BRAIN automation or this library? Start with the beginner notebook:
 
 - [Examples index](examples/README.md)
+- [Settings and data fields reference](docs/brain-settings-and-datafields.md)
 - [Tutorial 0 - Start Here For Beginners](examples/Tutorial%200%20-%20Start%20Here%20For%20Beginners.ipynb)
 
 Then continue through the feature tutorials:
@@ -139,8 +140,10 @@ Then continue through the feature tutorials:
 - [Tutorial 6 - Duplicate Cache And Re-Runs](examples/Tutorial%206%20-%20Duplicate%20Cache%20And%20Re-Runs.ipynb)
 - [Tutorial 7 - Results Raw Logs And Recordsets](examples/Tutorial%207%20-%20Results%20Raw%20Logs%20And%20Recordsets.ipynb)
 - [Tutorial 8 - Python API Workflow](examples/Tutorial%208%20-%20Python%20API%20Workflow.ipynb)
+- [Tutorial 9 - Simulation Settings Deep Dive](examples/Tutorial%209%20-%20Simulation%20Settings%20Deep%20Dive.ipynb)
+- [Tutorial 10 - Data Fields And Field Types](examples/Tutorial%2010%20-%20Data%20Fields%20And%20Field%20Types.ipynb)
 
-Tutorial 0 avoids login, live API calls, and batch internals. The feature notebooks then cover installation, login, Excel schemas, payload hashing, live guarded batch simulation, fallback behavior, duplicate cache, output artifacts, recordsets, and Python API automation.
+Tutorial 0 avoids login, live API calls, and batch internals. The feature notebooks then cover installation, login, Excel schemas, payload hashing, live guarded batch simulation, fallback behavior, duplicate cache, output artifacts, recordsets, Python API automation, simulation settings, and data-field selection.
 
 Notebook code is offline-safe by default. Live BRAIN cells run only when `BRAIN_SIM_RUN_LIVE=1` is set and still require cookies from `brain-sim login`.
 

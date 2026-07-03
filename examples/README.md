@@ -16,10 +16,21 @@ Recommended beginner path:
 
 1. Tutorial 0 - Start Here For Beginners
 2. Tutorial 1 - Installation And Project Tour
-3. Tutorial 3 - Excel Alpha Queue And Payloads
-4. Tutorial 4 - Live Excel Batch Simulation
-5. Tutorial 6 - Duplicate Cache And Re-Runs
-6. Tutorial 7 - Results Raw Logs And Recordsets
+3. Tutorial 9 - Simulation Settings Deep Dive
+4. Tutorial 10 - Data Fields And Field Types
+5. Tutorial 3 - Excel Alpha Queue And Payloads
+6. Tutorial 4 - Live Excel Batch Simulation
+7. Tutorial 6 - Duplicate Cache And Re-Runs
+8. Tutorial 7 - Results Raw Logs And Recordsets
+
+## Settings And Data Fields Path
+
+Use this path before running large batches:
+
+1. Read the [settings and data fields reference](../docs/brain-settings-and-datafields.md).
+2. Open [Tutorial 9 - Simulation Settings Deep Dive](Tutorial%209%20-%20Simulation%20Settings%20Deep%20Dive.ipynb).
+3. Open [Tutorial 10 - Data Fields And Field Types](Tutorial%2010%20-%20Data%20Fields%20And%20Field%20Types.ipynb).
+4. Only then prepare the Excel queue in Tutorial 3.
 
 ## Tutorials
 
@@ -34,6 +45,8 @@ Recommended beginner path:
 | 6 | [Tutorial 6 - Duplicate Cache And Re-Runs](Tutorial%206%20-%20Duplicate%20Cache%20And%20Re-Runs.ipynb) | SQLite cache, skipped duplicates, hash-changing rules | [tutorial_06_duplicate_alphas.xlsx](data/tutorial_06_duplicate_alphas.xlsx), [tutorial_06_second_run_summary.csv](expected/tutorial_06_second_run_summary.csv) |
 | 7 | [Tutorial 7 - Results Raw Logs And Recordsets](Tutorial%207%20-%20Results%20Raw%20Logs%20And%20Recordsets.ipynb) | summary CSV, raw JSONL, alpha details, `pnl`/`sharpe` recordsets | [tutorial_07_recordset_alphas.xlsx](data/tutorial_07_recordset_alphas.xlsx), [tutorial_07_recordset_summary.csv](expected/tutorial_07_recordset_summary.csv) |
 | 8 | [Tutorial 8 - Python API Workflow](Tutorial%208%20-%20Python%20API%20Workflow.ipynb) | `BrainAuth`, `BrainClient`, `BatchRunner`, `RunStore`, custom automation | [tutorial_08_api_alphas.xlsx](data/tutorial_08_api_alphas.xlsx) |
+| 9 | [Tutorial 9 - Simulation Settings Deep Dive](Tutorial%209%20-%20Simulation%20Settings%20Deep%20Dive.ipynb) | UI setting labels, `SimulationSettings`, payload settings, beginner rules | [tutorial_09_settings_examples.xlsx](data/tutorial_09_settings_examples.xlsx) |
+| 10 | [Tutorial 10 - Data Fields And Field Types](Tutorial%2010%20-%20Data%20Fields%20And%20Field%20Types.ipynb) | Data Explorer checklist, Matrix data field, Vector data field, Group data field, operator matching | [tutorial_10_datafield_examples.xlsx](data/tutorial_10_datafield_examples.xlsx) |
 
 ## Run Locally
 

@@ -30,6 +30,8 @@ TUTORIALS = [
     "Tutorial 6 - Duplicate Cache And Re-Runs.ipynb",
     "Tutorial 7 - Results Raw Logs And Recordsets.ipynb",
     "Tutorial 8 - Python API Workflow.ipynb",
+    "Tutorial 9 - Simulation Settings Deep Dive.ipynb",
+    "Tutorial 10 - Data Fields And Field Types.ipynb",
 ]
 
 WORKBOOKS = [
@@ -40,6 +42,8 @@ WORKBOOKS = [
     "tutorial_06_duplicate_alphas.xlsx",
     "tutorial_07_recordset_alphas.xlsx",
     "tutorial_08_api_alphas.xlsx",
+    "tutorial_09_settings_examples.xlsx",
+    "tutorial_10_datafield_examples.xlsx",
 ]
 
 EXPECTED_FILES = [
@@ -114,6 +118,8 @@ def test_notebooks_have_required_sections_and_feature_terms() -> None:
         TUTORIALS[6]: ["# Tutorial 6 - Duplicate Cache And Re-Runs", "simulation_cache.sqlite", "skipped_duplicate"],
         TUTORIALS[7]: ["# Tutorial 7 - Results, Raw Logs, And Recordsets", "recordsets", "raw JSONL"],
         TUTORIALS[8]: ["# Tutorial 8 - Python API Workflow", "BrainAuth", "BrainClient", "BatchRunner", "RunStore"],
+        TUTORIALS[9]: ["# Tutorial 9 - Simulation Settings Deep Dive", "Max Position", "neutralization", "SimulationSettings"],
+        TUTORIALS[10]: ["# Tutorial 10 - Data Fields And Field Types", "Matrix data field", "Vector data field", "Group data field", "Data Explorer"],
     }
 
     for tutorial, terms in required.items():
@@ -176,6 +182,17 @@ def test_sample_workbooks_have_expected_schema() -> None:
             continue
         assert required_headers.issubset(headers)
         assert len(rows) >= 3
+
+
+def test_settings_and_datafield_tutorials_link_reference_terms() -> None:
+    settings_source = _notebook_source(TUTORIALS[9])
+    datafield_source = _notebook_source(TUTORIALS[10])
+
+    for term in ["Language", "Instrument Type", "Region", "Delay", "Universe", "Neutralization", "Decay", "Truncation"]:
+        assert term in settings_source
+
+    for term in ["coverage", "cadence", "region", "delay", "vec_avg", "group_rank", "ts_backfill"]:
+        assert term in datafield_source
 
 
 def test_expected_csv_outputs_have_known_statuses() -> None:
